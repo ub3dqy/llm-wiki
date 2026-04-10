@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# State & logs (local, not committed)
+scripts/state.json
+scripts/*.log
+scripts/session-flush-*
+
+# uv
+uv.lock
+
+# OS
+.DS_Store
+Thumbs.db
