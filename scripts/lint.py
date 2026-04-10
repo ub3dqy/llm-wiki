@@ -151,7 +151,7 @@ def check_sparse_articles() -> list[dict]:
 
 async def check_contradictions() -> list[dict]:
     """Use LLM to detect contradictions across articles."""
-    from claude_agent_sdk import Agent, query
+    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, TextBlock, query
 
     wiki_content = read_all_wiki_content()
 
@@ -181,11 +181,11 @@ Do NOT output anything else — no preamble, no explanation, just the formatted 
     try:
         async for message in query(
             prompt=prompt,
-            options={
-                "cwd": str(ROOT_DIR),
-                "allowed_tools": [],
-                "max_turns": 2,
-            },
+            options=ClaudeAgentOptions(
+                cwd=str(ROOT_DIR),
+                allowed_tools=[],
+                max_turns=2,
+            ),
         ):
             if hasattr(message, "content"):
                 for block in message.content:

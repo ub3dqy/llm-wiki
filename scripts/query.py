@@ -17,7 +17,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 
 async def run_query(question: str, file_back: bool = False) -> str:
     """Query the knowledge base. Optionally file the answer as a Q&A article."""
-    from claude_agent_sdk import Agent, query
+    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, ResultMessage, TextBlock, query
 
     wiki_content = read_all_wiki_content()
 
@@ -71,13 +71,13 @@ consulting the knowledge base below.
     try:
         async for message in query(
             prompt=prompt,
-            options={
-                "cwd": str(ROOT_DIR),
-                "system_prompt": {"type": "preset", "preset": "claude_code"},
-                "allowed_tools": tools,
-                "permission_mode": "acceptEdits",
-                "max_turns": 15,
-            },
+            options=ClaudeAgentOptions(
+                cwd=str(ROOT_DIR),
+                system_prompt={"type": "preset", "preset": "claude_code"},
+                allowed_tools=tools,
+                permission_mode="acceptEdits",
+                max_turns=15,
+            ),
         ):
             if hasattr(message, "content"):
                 for block in message.content:

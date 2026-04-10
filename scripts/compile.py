@@ -21,7 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 
 async def compile_daily_log(log_path: Path, state: dict) -> float:
     """Compile a single daily log into wiki articles. Returns API cost."""
-    from claude_agent_sdk import Agent, query
+    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, ResultMessage, TextBlock, query
 
     log_content = log_path.read_text(encoding="utf-8")
     schema = SCHEMA_FILE.read_text(encoding="utf-8") if SCHEMA_FILE.exists() else "(no schema)"
@@ -105,13 +105,13 @@ Read the daily log and compile it into wiki articles following the schema.
     try:
         async for message in query(
             prompt=prompt,
-            options={
-                "cwd": str(ROOT_DIR),
-                "system_prompt": {"type": "preset", "preset": "claude_code"},
-                "allowed_tools": ["Read", "Write", "Edit", "Glob", "Grep"],
-                "permission_mode": "acceptEdits",
-                "max_turns": 30,
-            },
+            options=ClaudeAgentOptions(
+                cwd=str(ROOT_DIR),
+                system_prompt={"type": "preset", "preset": "claude_code"},
+                allowed_tools=["Read", "Write", "Edit", "Glob", "Grep"],
+                permission_mode="acceptEdits",
+                max_turns=30,
+            ),
         ):
             if hasattr(message, "total_cost_usd"):
                 cost = message.total_cost_usd or 0.0

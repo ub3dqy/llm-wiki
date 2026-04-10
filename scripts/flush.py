@@ -91,7 +91,7 @@ def append_to_daily_log(content: str) -> Path:
 
 async def run_flush(context: str, session_id: str) -> None:
     """Use Claude Agent SDK to evaluate and summarize the conversation context."""
-    from claude_agent_sdk import Agent, query
+    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, TextBlock, query
 
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "unknown-project")
     project_name = Path(project_dir).name if project_dir != "unknown-project" else "unknown"
@@ -132,10 +132,10 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
     try:
         async for message in query(
             prompt=prompt,
-            options={
-                "allowed_tools": [],
-                "max_turns": 2,
-            },
+            options=ClaudeAgentOptions(
+                allowed_tools=[],
+                max_turns=2,
+            ),
         ):
             if hasattr(message, "content"):
                 for block in message.content:

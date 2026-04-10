@@ -166,13 +166,12 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Добро пожаловать.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура Добро пожаловать"
+              "title": "Структура"
             }
           }
         ]
@@ -194,19 +193,35 @@
       "obsidian-local-images-plus:Local Images Plus  0.16.4\r\nLocalize attachments (plugin folder)": false
     }
   },
-  "active": "c6c4f9fb3b6cbd41",
+  "active": "314ec423fc0f08ca",
   "lastOpenFiles": [
+    "scripts/session-flush-6d507692-3c16-4767-8af1-fd163c6c8d3f-20260410-195653.md",
+    "scripts/session-flush-afa531bb-1bb0-4923-86f0-e326f3592428-20260410-195648.md",
+    "scripts/session-flush-00de2c41-a858-42ab-87c2-8e8228982139-20260410-195632.md",
+    "scripts/session-flush-8cdea319-4814-4137-b0b4-701fdad6143b-20260410-195609.md",
+    "scripts/flush.log",
+    "log.md.tmp.117712.1775840159785",
+    "wiki/connections/cross-project-windows-paths.md",
+    "wiki/concepts/uv-python-tooling.md",
+    "wiki/concepts/windows-path-issues.md",
+    "wiki/concepts/llm-wiki-architecture.md",
+    "wiki/concepts/claude-code-hooks.md",
+    "wiki/concepts/fastify-api-framework.md",
+    "wiki/concepts/turborepo-monorepo.md",
+    "daily/2026-04-10.md",
+    "scripts/state.json",
+    "reports/lint-2026-04-10.md",
+    "scripts/__pycache__/utils.cpython-314.pyc",
+    "scripts/__pycache__/config.cpython-314.pyc",
+    "scripts/__pycache__",
+    "hooks/pre-compact.py",
+    "hooks/session-end.py",
+    "hooks/session-start.py",
+    "scripts/lint.py",
+    "Добро пожаловать.md",
     "wiki/overview.md",
     "log.md",
     "index.md",
-    "CLAUDE.md",
-    "wiki/sources",
-    "wiki/entities",
-    "wiki/concepts",
-    "wiki/analyses",
-    "wiki",
-    "raw/assets",
-    "raw",
-    "Добро пожаловать.md"
+    "CLAUDE.md"
   ]
 }
