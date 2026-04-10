@@ -8,6 +8,20 @@ updated: 2026-04-10
 
 Хронологический лог всех операций.
 
+## [2026-04-11T01:34:38+03:00] compile | 2026-04-11.md
+
+- Source: daily/2026-04-11.md
+- Articles created: [[concepts/flutter-adb-testing]], [[concepts/pulse-testing-methodology]], [[concepts/claude-code-context-limits]], [[connections/mobile-testing-workflow]]
+- Articles updated: [[concepts/flutter-go-messenger-architecture]] (сокращён ADB раздел, добавлены wikilinks), [[concepts/claude-code-hooks]] (добавлено ограничение PreCompact hook)
+- Index updated: 3 новых concepts, 1 новый connection, обновлены By Project секции
+
+## [2026-04-11T01:31:24+03:00] seed | messenger
+
+- Source: project scan of E:\Project\game app\messenger_test
+- Articles created: [[entities/pulse-messenger]], [[concepts/flutter-go-messenger-architecture]], [[concepts/gin-http-framework]], [[concepts/pion-webrtc-calls]], [[concepts/minio-file-storage]], [[concepts/messenger-docker-infrastructure]]
+- Articles updated: none
+- Index updated: добавлена секция messenger в By Project, 6 новых статей
+
 ## [2026-04-11T00:00:00+03:00] wiki-save | система уведомлений агентов
 
 - Article: [[concepts/agent-notification-system]]

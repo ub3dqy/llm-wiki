@@ -67,17 +67,24 @@ def scan_project(project_dir: str) -> dict:
     name = root.name
     found_files: dict[str, str] = {}
 
-    # Scan for key files
-    for filename in SCAN_FILES:
-        filepath = root / filename
-        if filepath.exists():
-            try:
-                content = filepath.read_text(encoding="utf-8")
-                if len(content) > MAX_FILE_SIZE:
-                    content = content[:MAX_FILE_SIZE] + "\n\n...(truncated)"
-                found_files[filename] = content
-            except (OSError, UnicodeDecodeError):
-                pass
+    # Scan for key files (root + 1 level deep for monorepos)
+    scan_dirs = [root]
+    for child in root.iterdir():
+        if child.is_dir() and not child.name.startswith("."):
+            scan_dirs.append(child)
+
+    for scan_dir in scan_dirs:
+        for filename in SCAN_FILES:
+            filepath = scan_dir / filename
+            if filepath.exists():
+                rel = str(filepath.relative_to(root)).replace("\\", "/")
+                try:
+                    content = filepath.read_text(encoding="utf-8")
+                    if len(content) > MAX_FILE_SIZE:
+                        content = content[:MAX_FILE_SIZE] + "\n\n...(truncated)"
+                    found_files[rel] = content
+                except (OSError, UnicodeDecodeError):
+                    pass
 
     # Scan src/ structure (just directory names, max 3 levels)
     src_tree: list[str] = []

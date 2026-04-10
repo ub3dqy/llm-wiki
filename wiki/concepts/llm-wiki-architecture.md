@@ -2,33 +2,76 @@
 title: LLM Wiki Architecture
 type: concept
 created: 2026-04-10
-updated: 2026-04-10
-sources: [daily/2026-04-10.md]
+updated: 2026-04-11
+sources: [daily/2026-04-10.md, daily/2026-04-11.md]
 project: memory-claude
 tags: [knowledge-management, wiki, llm, architecture, key-insight]
 ---
 
 # LLM Wiki Architecture
 
-Архитектура глобальной базы знаний, объединяющая два подхода: ручной ingest (паттерн Andrej Karpathy's LLM Wiki) и автоматическую компиляцию из сессий (coleam00/claude-memory-compiler).
+Архитектура глобальной базы знаний, объединяющая ручной ingest (Karpathy's LLM Wiki), автоматическую компиляцию из сессий (coleam00/claude-memory-compiler), и **реактивный инжект знаний** через 6 Claude Code хуков.
 
 ## Key Points
 
 - Два входных канала: ручной ingest (`raw/` → `wiki/sources/`) и авто-захват (`daily/` → `wiki/concepts/`)
-- Единая `wiki/` директория — оба канала пишут в одно место
-- Расположение: отдельное git-репо, не внутри проектов
-- Автоматизация через [[concepts/claude-code-hooks|Claude Code Hooks]] — глобальные для всех проектов
-- Python-стек: [[concepts/uv-python-tooling|uv]] + claude-agent-sdk
+- Третий канал: `/wiki-save` скилл для мгновенного сохранения из любого проекта
+- 6 хуков обеспечивают полный цикл: захват → компиляция → инжект → напоминание
+- Реактивный инжект: UserPromptSubmit подгружает статьи по теме конкретного промпта
+- Обогащённый index с `[project] (Nw)` аннотациями и секцией By Project
+- seed.py для ретроспективного наполнения wiki из существующих проектов
 
 ## Details
 
-Ключевое архитектурное решение — объединение двух паттернов управления знаниями в единую систему. Karpathy's LLM Wiki предлагает ручной ingest внешних документов с созданием структурированных summary-страниц. Memory Compiler добавляет автоматический захват инсайтов из рабочих сессий через хуки Claude Code.
+### Три волны развития
 
-Вики расположена в отдельном git-репозитории (`E:\Project\memory claude\memory claude\`), а не внутри конкретных проектов. Это позволяет накапливать знания кросс-проектно — хуки настроены глобально и захватывают знания из любого проекта. Каждая запись в wiki помечается тегом `project:` для отслеживания происхождения.
+**Волна 1 (базовая):** Объединение Karpathy + coleam00. Три хука (SessionStart, SessionEnd, PreCompact), flush.py + compile.py через Agent SDK, lint с 7 проверками.
 
-Скрипты (`flush.py`, `compile.py`, `query.py`, `lint.py`) написаны на Python с использованием uv как пакетного менеджера и claude-agent-sdk для LLM-вызовов. Решено не портировать на Node.js — Python-стек лучше подходит для данного типа задач.
+**Волна 1.5 (стабилизация):** Concurrency control (file locks, debounce), index-guided compile/query (вместо full dump), обогащённый index, проектный контекст в SessionStart, секция Recent Changes.
+
+**Волна 2 (реактивная):** UserPromptSubmit (точечный инжект), PostToolUse async (real-time захват), Stop hook (напоминание), seed.py, wiki_cli.py, /wiki-save скилл.
+
+### Полный цикл знаний
+
+```
+Захват:  SessionEnd → flush.py → daily/ (конец сессии)
+         PreCompact → flush.py → daily/ (перед сжатием)
+         PostToolUse → micro-entry → daily/ (git commit, test run)
+         /wiki-save → wiki/ (мгновенный, из любого проекта)
+
+Компиляция: compile.py → daily/ → wiki/concepts/, wiki/connections/
+            rebuild_index.py → index.md с [project] (Nw) + By Project
+            Авто-триггер после 18:00
+
+Инжект:  SessionStart → wiki index + проектные статьи + recent changes
+         UserPromptSubmit → статьи по ключевым словам промпта
+
+Напоминание: Stop hook → systemMessage при архитектурных решениях
+```
+
+### Масштабирование
+
+| Статей | Стратегия | Статус |
+|---|---|---|
+| 0-50 | Полный index в SessionStart | Текущий |
+| 50-500 | Index + UserPromptSubmit точечный инжект | Текущий |
+| 500-2000 | Категорийные под-индексы | Запланировано |
+| 2000+ | Гибридный RAG (embeddings + index) | Будущее |
+
+### Скрипты
+
+| Скрипт | Назначение |
+|---|---|
+| `flush.py` | Оценка ценности разговора через Agent SDK → daily log |
+| `compile.py` | Компиляция daily → wiki статьи через Agent SDK |
+| `query.py` | Поиск по wiki с опциональным file-back в qa/ |
+| `lint.py` | 7 health checks (broken links, orphans, stale, sparse, contradictions) |
+| `rebuild_index.py` | Обогащение index [project] (Nw) + By Project секция |
+| `seed.py` | Ретроспективное наполнение wiki из проекта |
+| `wiki_cli.py` | Unified CLI (status, compile, query, lint, rebuild, seed) |
 
 ## See Also
 
 - [[concepts/claude-code-hooks]]
 - [[concepts/uv-python-tooling]]
+- [[concepts/windows-path-issues]]
