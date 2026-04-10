@@ -10,16 +10,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import QA_DIR, INDEX_FILE, LOG_FILE, WIKI_DIR, now_iso
-from utils import load_state, read_all_wiki_content, save_state
+from utils import load_state, read_wiki_index, save_state
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 async def run_query(question: str, file_back: bool = False) -> str:
     """Query the knowledge base. Optionally file the answer as a Q&A article."""
-    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, ResultMessage, TextBlock, query
+    from claude_agent_sdk import ClaudeAgentOptions, query
 
-    wiki_content = read_all_wiki_content()
+    wiki_index = read_wiki_index()
 
     tools = ["Read", "Glob", "Grep"]
     if file_back:
@@ -36,7 +36,7 @@ After answering, do the following:
 1. Create a Q&A article at {QA_DIR}/ with a slugified filename
    (e.g., wiki/qa/how-to-handle-auth-redirects.md)
 2. Use YAML frontmatter: title, type: qa, question, consulted_articles, filed: {timestamp[:10]}
-3. Update {INDEX_FILE} with a new entry under the Analyses section
+3. Update {INDEX_FILE} with a new entry under the Q&A section
 4. Append to {LOG_FILE}:
    ## [{timestamp}] query (filed) | question summary
    - Question: {question}
@@ -45,20 +45,21 @@ After answering, do the following:
 """
 
     prompt = f"""You are a knowledge base query engine. Answer the user's question by
-consulting the knowledge base below.
+consulting the knowledge base.
 
 ## How to Answer
 
-1. Read the INDEX section first — it lists every article with a one-line summary
+1. Read the wiki index below — it lists every article with a one-line summary
 2. Identify relevant articles from the index
-3. Read those articles carefully (they're included below)
-4. Synthesize a clear, thorough answer
-5. Cite sources using [[wikilinks]] (e.g., [[concepts/supabase-auth]])
-6. If the knowledge base doesn't contain relevant information, say so honestly
+3. Use the Read tool to read those articles (they are at {WIKI_DIR}/<section>/<slug>.md)
+4. Use Grep to search for related terms across the wiki/ directory if needed
+5. Synthesize a clear, thorough answer
+6. Cite sources using [[wikilinks]] (e.g., [[concepts/supabase-auth]])
+7. If the knowledge base doesn't contain relevant information, say so honestly
 
-## Knowledge Base
+## Wiki Index
 
-{wiki_content}
+{wiki_index}
 
 ## Question
 

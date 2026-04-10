@@ -173,6 +173,28 @@ uv run python scripts/lint.py
 
 # Run only structural checks (free, no API)
 uv run python scripts/lint.py --structural-only
+
+# Rebuild index with enriched annotations [project] (Nw) + By Project section
+uv run python scripts/rebuild_index.py
+
+# Preview rebuilt index without writing
+uv run python scripts/rebuild_index.py --dry-run
+
+# Check if index is out of date (exit 1 if yes)
+uv run python scripts/rebuild_index.py --check
+
+# Seed wiki from an existing project
+uv run python scripts/seed.py "path/to/project"
+uv run python scripts/seed.py "path/to/project" --dry-run
+uv run python scripts/seed.py "path/to/project" --project-name myproject
+
+# Wiki CLI (unified interface)
+uv run python scripts/wiki_cli.py status
+uv run python scripts/wiki_cli.py compile
+uv run python scripts/wiki_cli.py query "question"
+uv run python scripts/wiki_cli.py lint
+uv run python scripts/wiki_cli.py rebuild
+uv run python scripts/wiki_cli.py seed "path/to/project"
 ```
 
 ## Tags Taxonomy

@@ -8,10 +8,20 @@ __pycache__/
 scripts/state.json
 scripts/*.log
 scripts/session-flush-*
+scripts/locks/
+scripts/.last-flush-spawn
+scripts/.last-tool-capture
+scripts/.last-wiki-reminder
 
 # uv
 uv.lock
 
+# Obsidian
+.obsidian/
+
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude plans
+.claude/plans/

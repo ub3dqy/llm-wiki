@@ -7,36 +7,29 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
+
+# Propagate guard to Agent SDK sub-sessions so hooks don't fire for them.
+os.environ["CLAUDE_INVOKED_BY"] = "compile"
 
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import CONCEPTS_DIR, CONNECTIONS_DIR, INDEX_FILE, LOG_FILE, SCHEMA_FILE, WIKI_DIR, now_iso
-from utils import file_hash, list_raw_files, list_wiki_articles, load_state, read_wiki_index, save_state
+from utils import file_hash, list_daily_logs, list_wiki_articles, load_state, read_wiki_index, save_state
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 async def compile_daily_log(log_path: Path, state: dict) -> float:
     """Compile a single daily log into wiki articles. Returns API cost."""
-    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, ResultMessage, TextBlock, query
+    from claude_agent_sdk import ClaudeAgentOptions, query
 
     log_content = log_path.read_text(encoding="utf-8")
     schema = SCHEMA_FILE.read_text(encoding="utf-8") if SCHEMA_FILE.exists() else "(no schema)"
     wiki_index = read_wiki_index()
-
-    # Gather existing articles for context
-    existing_context = ""
-    existing: dict[str, str] = {}
-    for article_path in list_wiki_articles():
-        rel = article_path.relative_to(ROOT_DIR)
-        existing[str(rel)] = article_path.read_text(encoding="utf-8")
-
-    if existing:
-        parts = [f"### {rel_path}\n```markdown\n{content}\n```" for rel_path, content in existing.items()]
-        existing_context = "\n\n".join(parts)
 
     timestamp = now_iso()
 
@@ -51,10 +44,6 @@ knowledge into structured wiki articles.
 
 {wiki_index}
 
-## Existing Wiki Articles
-
-{existing_context if existing_context else "(No existing articles yet)"}
-
 ## Daily Log to Compile
 
 **File:** {log_path.name}
@@ -65,19 +54,25 @@ knowledge into structured wiki articles.
 
 Read the daily log and compile it into wiki articles following the schema.
 
+**IMPORTANT**: Use the Read tool to check existing wiki articles before creating or
+updating them. Do NOT assume you know their content — read first, then decide whether
+to create a new article or update an existing one. Use Grep to find related articles.
+
 ### Rules:
 
 1. **Extract key concepts** — identify 3-7 distinct concepts worth their own article
-2. **Create concept articles** in `wiki/concepts/` — one .md file per concept
+2. **Check existing articles** — Read any related articles from the index before writing.
+   Use Grep to search for related terms across wiki/
+3. **Create concept articles** in `wiki/concepts/` — one .md file per concept
    - Use YAML frontmatter: title, type (concept), created, updated, sources, project, tags
    - Use `[[wikilinks]]` for cross-references (e.g. `[[concepts/prisma-migrations]]`)
    - Write in encyclopedia style — neutral, comprehensive
-3. **Create connection articles** in `wiki/connections/` if the log reveals non-obvious
+4. **Create connection articles** in `wiki/connections/` if the log reveals non-obvious
    relationships between 2+ existing concepts
-4. **Update existing articles** if the log adds new info to concepts already in the wiki
-   - Add the new info, add the source to frontmatter
-5. **Update index.md** at `{INDEX_FILE}` — add new entries under the appropriate section
-6. **Append to log.md** at `{LOG_FILE}`:
+5. **Update existing articles** if the log adds new info to concepts already in the wiki
+   - Read the existing article first, then use Edit to add info
+6. **Update index.md** at `{INDEX_FILE}` — add new entries under the appropriate section
+7. **Append to log.md** at `{LOG_FILE}`:
    ```
    ## [{timestamp}] compile | {{log_path.name}}
    - Source: daily/{{log_path.name}}
@@ -155,7 +150,7 @@ def main() -> None:
             sys.exit(1)
         to_compile = [target]
     else:
-        all_logs = list_raw_files()
+        all_logs = list_daily_logs()
         if args.all:
             to_compile = all_logs
         else:
@@ -183,6 +178,12 @@ def main() -> None:
         cost = asyncio.run(compile_daily_log(log_path, state))
         total_cost += cost
         print("  Done.")
+
+    # Rebuild index with enriched annotations and By Project section
+    from rebuild_index import rebuild_and_write_index
+
+    rebuild_and_write_index()
+    print("Index enriched with project tags and word counts.")
 
     articles = list_wiki_articles()
     print(f"\nCompilation complete. Total cost: ${total_cost:.2f}")

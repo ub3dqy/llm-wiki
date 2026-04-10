@@ -67,8 +67,12 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
 
 def extract_wikilinks(content: str) -> list[str]:
-    """Extract all [[wikilink]] targets from markdown content."""
-    return _WIKILINK_RE.findall(content)
+    """Extract all [[wikilink]] targets from markdown content.
+
+    Handles Obsidian-style aliases: [[target|display name]] → target
+    """
+    raw = _WIKILINK_RE.findall(content)
+    return [link.split("|")[0] for link in raw]
 
 
 def wiki_article_exists(link: str) -> bool:
@@ -101,7 +105,7 @@ def list_wiki_articles() -> list[Path]:
     return articles
 
 
-def list_raw_files() -> list[Path]:
+def list_daily_logs() -> list[Path]:
     """Return all daily log files sorted by name."""
     from config import DAILY_DIR
 
@@ -160,3 +164,61 @@ def get_article_word_count(path: Path) -> int:
         if end != -1:
             text = text[end + 3 :]
     return len(text.split())
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter parsing
+# ---------------------------------------------------------------------------
+
+_FM_LINE_RE = re.compile(r"^(\w[\w-]*):\s*(.+)$")
+
+
+def parse_frontmatter(path: Path) -> dict[str, str]:
+    """Parse YAML frontmatter from a wiki article.
+
+    Returns a dict of key → raw string value.
+    Returns empty dict if no frontmatter found.
+    """
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return {}
+    end = text.find("---", 3)
+    if end == -1:
+        return {}
+    result: dict[str, str] = {}
+    for line in text[3:end].splitlines():
+        m = _FM_LINE_RE.match(line)
+        if m:
+            result[m.group(1)] = m.group(2).strip()
+    return result
+
+
+def get_article_projects(path: Path) -> list[str]:
+    """Return list of project tags from article frontmatter.
+
+    Handles both 'project: foo' and 'project: foo, bar' formats.
+    """
+    fm = parse_frontmatter(path)
+    raw = fm.get("project", "").strip()
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def build_article_metadata_map() -> dict[str, dict]:
+    """Build a map of slug → {projects, word_count, updated, title}.
+
+    Slug format matches index.md wikilinks: 'concepts/foo', 'entities/bar'.
+    """
+    meta: dict[str, dict] = {}
+    for article in list_wiki_articles():
+        rel = article.relative_to(WIKI_DIR)
+        slug = str(rel).replace("\\", "/").replace(".md", "")
+        fm = parse_frontmatter(article)
+        meta[slug] = {
+            "projects": get_article_projects(article),
+            "word_count": get_article_word_count(article),
+            "updated": fm.get("updated", ""),
+            "title": fm.get("title", slug),
+        }
+    return meta

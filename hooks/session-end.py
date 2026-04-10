@@ -2,13 +2,13 @@
 
 Extracts the last N turns from the transcript JSONL, saves to a temp file,
 and launches flush.py as a detached background process.
+
+Includes debounce to prevent cascading spawns when many sessions end at once.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -19,8 +19,11 @@ if os.environ.get("CLAUDE_INVOKED_BY"):
     sys.exit(0)
 
 ROOT = Path(__file__).resolve().parent.parent
-DAILY_DIR = ROOT / "daily"
 SCRIPTS_DIR = ROOT / "scripts"
+
+# Import shared extraction logic
+sys.path.insert(0, str(ROOT / "hooks"))
+from hook_utils import check_debounce, extract_conversation_context, parse_hook_stdin, update_debounce
 
 logging.basicConfig(
     filename=str(SCRIPTS_DIR / "flush.log"),
@@ -29,75 +32,19 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-MAX_TURNS = 30
-MAX_CONTEXT_CHARS = 15_000
-MIN_TURNS_TO_FLUSH = 1
-
-
-def extract_conversation_context(transcript_path: Path) -> tuple[str, int]:
-    """Read JSONL transcript and extract last ~N conversation turns as markdown."""
-    turns: list[str] = []
-
-    with open(transcript_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            msg = entry.get("message", {})
-            if isinstance(msg, dict):
-                role = msg.get("role", "")
-                content = msg.get("content", "")
-            else:
-                role = entry.get("role", "")
-                content = entry.get("content", "")
-
-            if role not in ("user", "assistant"):
-                continue
-
-            if isinstance(content, list):
-                text_parts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif isinstance(block, str):
-                        text_parts.append(block)
-                content = "\n".join(text_parts)
-
-            if isinstance(content, str) and content.strip():
-                label = "User" if role == "user" else "Assistant"
-                turns.append(f"**{label}:** {content.strip()}\n")
-
-    recent = turns[-MAX_TURNS:]
-    context = "\n".join(recent)
-
-    if len(context) > MAX_CONTEXT_CHARS:
-        context = context[-MAX_CONTEXT_CHARS:]
-        boundary = context.find("\n**")
-        if boundary > 0:
-            context = context[boundary + 1 :]
-
-    return context, len(recent)
+MIN_TURNS_TO_FLUSH = 4
+DEBOUNCE_FILE = SCRIPTS_DIR / ".last-flush-spawn"
 
 
 def main() -> None:
-    try:
-        raw_input = sys.stdin.read()
-        try:
-            hook_input: dict = json.loads(raw_input)
-        except json.JSONDecodeError:
-            fixed_input = re.sub(r'(?<!\\)\\(?!["\\])', r"\\\\", raw_input)
-            hook_input = json.loads(fixed_input)
-    except (json.JSONDecodeError, ValueError, EOFError) as e:
-        logging.error("Failed to parse stdin: %s", e)
+    hook_input = parse_hook_stdin()
+    if hook_input is None:
+        logging.error("Failed to parse stdin")
         return
 
     session_id = hook_input.get("session_id", "unknown")
     transcript_path_str = hook_input.get("transcript_path", "")
+    cwd = hook_input.get("cwd", "")
 
     logging.info("SessionEnd fired: session=%s", session_id)
 
@@ -108,6 +55,11 @@ def main() -> None:
     transcript_path = Path(transcript_path_str)
     if not transcript_path.exists():
         logging.info("SKIP: transcript missing: %s", transcript_path_str)
+        return
+
+    # Debounce: prevent cascading spawns
+    if not check_debounce(DEBOUNCE_FILE):
+        logging.info("SKIP: debounce — too soon since last spawn")
         return
 
     try:
@@ -123,6 +75,9 @@ def main() -> None:
     if turn_count < MIN_TURNS_TO_FLUSH:
         logging.info("SKIP: only %d turns (min %d)", turn_count, MIN_TURNS_TO_FLUSH)
         return
+
+    # Derive project name from cwd
+    project_name = Path(cwd).name if cwd else "unknown"
 
     # Save context to temp file for flush.py
     timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
@@ -140,6 +95,7 @@ def main() -> None:
         str(flush_script),
         str(context_file),
         session_id,
+        project_name,
     ]
 
     creation_flags = 0
@@ -153,9 +109,11 @@ def main() -> None:
             stderr=subprocess.DEVNULL,
             creationflags=creation_flags,
         )
+        update_debounce(DEBOUNCE_FILE)
         logging.info(
-            "Spawned flush.py for session %s (%d turns, %d chars)",
+            "Spawned flush.py for session %s, project=%s (%d turns, %d chars)",
             session_id,
+            project_name,
             turn_count,
             len(context),
         )

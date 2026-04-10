@@ -9,23 +9,29 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 # Recursion guard: flush.py uses Agent SDK → Claude Code → hook → flush.py
-import os
-
 if os.environ.get("CLAUDE_INVOKED_BY"):
     sys.exit(0)
+
+# Propagate guard to any Agent SDK sub-sessions we spawn.
+os.environ["CLAUDE_INVOKED_BY"] = "flush"
 
 # --- Paths (inline to avoid import issues when run as background process) ---
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DAILY_DIR = ROOT_DIR / "daily"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 STATE_FILE = SCRIPTS_DIR / "state.json"
+LOCK_DIR = SCRIPTS_DIR / "locks"
 COMPILE_TRIGGER_HOUR = 18
+MAX_CONCURRENT_FLUSH = 2
+LOCK_TIMEOUT_SEC = 120  # stale lock cleanup after 2 minutes
 
 # --- Logging ---
 logging.basicConfig(
@@ -34,6 +40,52 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [flush] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+
+# ---------------------------------------------------------------------------
+# Concurrency control via lock files
+# ---------------------------------------------------------------------------
+
+
+def _cleanup_stale_locks() -> None:
+    """Remove lock files older than LOCK_TIMEOUT_SEC (stale/crashed processes)."""
+    if not LOCK_DIR.exists():
+        return
+    now = time.time()
+    for lock_file in LOCK_DIR.glob("flush-*.lock"):
+        try:
+            age = now - lock_file.stat().st_mtime
+            if age > LOCK_TIMEOUT_SEC:
+                lock_file.unlink(missing_ok=True)
+                logging.info("Cleaned stale lock: %s (age: %.0fs)", lock_file.name, age)
+        except OSError:
+            pass
+
+
+def _count_active_locks() -> int:
+    """Count current active lock files."""
+    if not LOCK_DIR.exists():
+        return 0
+    return len(list(LOCK_DIR.glob("flush-*.lock")))
+
+
+def acquire_flush_lock(session_id: str) -> Path | None:
+    """Try to acquire a concurrency slot. Returns lock path or None if at capacity."""
+    LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    _cleanup_stale_locks()
+
+    if _count_active_locks() >= MAX_CONCURRENT_FLUSH:
+        return None
+
+    lock_path = LOCK_DIR / f"flush-{session_id}.lock"
+    lock_path.write_text(str(os.getpid()), encoding="utf-8")
+    return lock_path
+
+
+def release_flush_lock(lock_path: Path | None) -> None:
+    """Release a concurrency slot."""
+    if lock_path and lock_path.exists():
+        lock_path.unlink(missing_ok=True)
 
 
 def _now_iso() -> str:
@@ -89,12 +141,9 @@ def append_to_daily_log(content: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-async def run_flush(context: str, session_id: str) -> None:
+async def run_flush(context: str, session_id: str, project_name: str = "unknown") -> None:
     """Use Claude Agent SDK to evaluate and summarize the conversation context."""
-    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, TextBlock, query
-
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "unknown-project")
-    project_name = Path(project_dir).name if project_dir != "unknown-project" else "unknown"
+    from claude_agent_sdk import ClaudeAgentOptions, query
 
     prompt = f"""You are a knowledge extraction agent. Read the conversation context below and
 decide if it contains anything worth preserving in a personal knowledge base.
@@ -128,22 +177,29 @@ SKIP: No significant knowledge to extract.
 Keep the summary concise — aim for 200-500 words. Include project tag: `project: {project_name}`
 """
 
-    result_text = ""
-    try:
-        async for message in query(
-            prompt=prompt,
-            options=ClaudeAgentOptions(
-                allowed_tools=[],
-                max_turns=2,
-            ),
-        ):
-            if hasattr(message, "content"):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        result_text += block.text
-    except Exception as e:
-        logging.error("Agent SDK query failed: %s", e)
-        return
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        result_text = ""
+        try:
+            async for message in query(
+                prompt=prompt,
+                options=ClaudeAgentOptions(
+                    allowed_tools=[],
+                    max_turns=2,
+                ),
+            ):
+                if hasattr(message, "content"):
+                    for block in message.content:
+                        if hasattr(block, "text"):
+                            result_text += block.text
+            break  # success
+        except Exception as e:
+            if attempt < max_retries and "timeout" in str(e).lower():
+                logging.warning("Agent SDK timeout (attempt %d/%d): %s", attempt + 1, max_retries + 1, e)
+                await asyncio.sleep(2)
+                continue
+            logging.error("Agent SDK query failed: %s", e)
+            return
 
     if result_text.strip().startswith("SKIP:"):
         logging.info("Flush decided to skip: %s", result_text.strip()[:100])
@@ -210,48 +266,68 @@ def maybe_trigger_compilation() -> None:
 # ---------------------------------------------------------------------------
 
 
+def prune_flushed_sessions(state: dict) -> None:
+    """Remove flushed_sessions entries older than 7 days to prevent unbounded growth."""
+    flushed = state.get("flushed_sessions", {})
+    if len(flushed) <= 50:
+        return
+    # Keep only the last 50 entries (dict preserves insertion order in Python 3.7+)
+    state["flushed_sessions"] = dict(list(flushed.items())[-50:])
+
+
 def main() -> None:
     if len(sys.argv) < 3:
-        print("Usage: flush.py <context_file> <session_id>")
+        print("Usage: flush.py <context_file> <session_id> [project_name]")
         sys.exit(1)
 
     context_file = Path(sys.argv[1])
     session_id = sys.argv[2]
+    project_name = sys.argv[3] if len(sys.argv) > 3 else "unknown"
 
     if not context_file.exists():
         logging.error("Context file not found: %s", context_file)
         sys.exit(1)
 
-    # Deduplication: skip if we already flushed this session
-    state = load_flush_state()
-    flushed_sessions = state.get("flushed_sessions", {})
-
-    context = context_file.read_text(encoding="utf-8")
-    context_hash = hashlib.sha256(context.encode()).hexdigest()
-
-    if session_id in flushed_sessions and flushed_sessions[session_id] == context_hash:
-        logging.info("SKIP: session %s already flushed with same content", session_id)
-        # Clean up context file
+    # Concurrency control: max MAX_CONCURRENT_FLUSH parallel flush processes
+    lock_path = acquire_flush_lock(session_id)
+    if lock_path is None:
+        logging.info("SKIP: concurrency limit reached (%d), dropping session %s", MAX_CONCURRENT_FLUSH, session_id)
         context_file.unlink(missing_ok=True)
         return
 
-    logging.info("Starting flush for session %s (%d chars)", session_id, len(context))
-
     try:
-        asyncio.run(run_flush(context, session_id))
-    except Exception as e:
-        logging.error("Flush failed: %s", e)
+        # Deduplication: skip if we already flushed this session
+        state = load_flush_state()
+        flushed_sessions = state.get("flushed_sessions", {})
+
+        context = context_file.read_text(encoding="utf-8")
+        context_hash = hashlib.sha256(context.encode()).hexdigest()
+
+        if session_id in flushed_sessions and flushed_sessions[session_id] == context_hash:
+            logging.info("SKIP: session %s already flushed with same content", session_id)
+            context_file.unlink(missing_ok=True)
+            return
+
+        logging.info("Starting flush for session %s (%d chars)", session_id, len(context))
+
+        try:
+            asyncio.run(run_flush(context, session_id, project_name))
+        except Exception as e:
+            logging.error("Flush failed: %s", e)
+        finally:
+            # Record that we flushed this session
+            flushed_sessions[session_id] = context_hash
+            state["flushed_sessions"] = flushed_sessions
+            prune_flushed_sessions(state)
+            save_flush_state(state)
+
+            # Clean up context file
+            context_file.unlink(missing_ok=True)
+
+        # Check if we should auto-compile
+        maybe_trigger_compilation()
     finally:
-        # Record that we flushed this session
-        flushed_sessions[session_id] = context_hash
-        state["flushed_sessions"] = flushed_sessions
-        save_flush_state(state)
-
-        # Clean up context file
-        context_file.unlink(missing_ok=True)
-
-    # Check if we should auto-compile
-    maybe_trigger_compilation()
+        release_flush_lock(lock_path)
 
 
 if __name__ == "__main__":

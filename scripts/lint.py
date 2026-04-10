@@ -15,7 +15,7 @@ from utils import (
     extract_wikilinks,
     file_hash,
     get_article_word_count,
-    list_raw_files,
+    list_daily_logs,
     list_wiki_articles,
     load_state,
     read_all_wiki_content,
@@ -72,7 +72,7 @@ def check_orphan_sources() -> list[dict]:
     state = load_state()
     ingested = state.get("ingested", {})
     issues: list[dict] = []
-    for log_path in list_raw_files():
+    for log_path in list_daily_logs():
         if log_path.name not in ingested:
             issues.append({
                 "severity": "warning",
@@ -88,7 +88,7 @@ def check_stale_articles() -> list[dict]:
     state = load_state()
     ingested = state.get("ingested", {})
     issues: list[dict] = []
-    for log_path in list_raw_files():
+    for log_path in list_daily_logs():
         rel = log_path.name
         if rel in ingested:
             stored_hash = ingested[rel].get("hash", "")
