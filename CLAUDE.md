@@ -201,7 +201,7 @@ uv run python scripts/wiki_cli.py seed "path/to/project"
 
 Use lowercase, hyphenated tags. Categories:
 
-- **Project tags**: `#office`, `#blocks-and-relics`, `#personal`, etc.
+- **Project tags**: `#my-project`, `#side-project`, `#personal`, etc.
 - **Domain tags**: specific to topic (define as you go)
 - **Meta tags**: `#needs-review`, `#contradiction`, `#stub`, `#key-insight`
 

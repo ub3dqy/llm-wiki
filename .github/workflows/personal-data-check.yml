@@ -1,0 +1,33 @@
+name: Personal Data Check
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for personal data in tracked files
+        run: |
+          # Patterns that should never appear in the repo
+          # Add your own patterns here after cloning
+          PATTERNS="E:/Project|/mnt/e/Project|/mnt/c/Users|C:\\\\Users"
+
+          echo "Scanning all tracked files for personal data patterns..."
+          FOUND=$(git ls-files | xargs grep -rlE "$PATTERNS" 2>/dev/null || true)
+
+          if [ -n "$FOUND" ]; then
+            echo "::error::Personal data found in the following files:"
+            echo "$FOUND"
+            echo ""
+            echo "Details:"
+            git ls-files | xargs grep -nE "$PATTERNS" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "All clear — no personal data found."
