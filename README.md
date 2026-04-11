@@ -231,6 +231,38 @@ Without limits, closing multiple sessions simultaneously spawns hundreds of node
 | 500-2000 | Category-based sub-indices | Planned |
 | 2000+ | Hybrid RAG (embeddings + index) | Future |
 
+## Maintenance Checklist
+
+### After updating Codex CLI
+
+```bash
+# 1. Regenerate JSON schemas for your version
+codex app-server generate-json-schema --out ./schemas
+
+# 2. Compare payload fields against hook scripts
+# Check: session-start.py, stop.py, user-prompt-wiki.py, post-tool-capture.py
+
+# 3. Run smoke tests with full payloads (see docs/codex-integration-plan.md)
+
+# 4. Verify feature flag is still active
+codex features list
+```
+
+Generated schemas are the **source of truth** for your installed version. Wire formats may change between Codex releases — always re-verify after updates.
+
+### After updating Claude Code
+
+```bash
+# 1. Verify hooks still pass validation
+uv run python scripts/wiki_cli.py status
+
+# 2. Run structural lint
+uv run python scripts/wiki_cli.py lint
+
+# 3. Test SessionStart output
+echo '{}' | uv run python hooks/session-start.py | python -c "import sys,json; print(len(json.load(sys.stdin)['hookSpecificOutput']['additionalContext']), 'chars')"
+```
+
 ## Credits
 
 - [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — LLM Wiki concept and three-layer architecture pattern
