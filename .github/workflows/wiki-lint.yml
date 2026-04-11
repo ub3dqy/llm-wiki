@@ -8,10 +8,8 @@ on:
       - 'index.md'
       - 'scripts/**'
       - 'hooks/**'
-      - '.github/workflows/**'
   pull_request:
     branches: [master, main]
-  workflow_dispatch:
 
 jobs:
   lint:
@@ -27,20 +25,10 @@ jobs:
         run: uv sync
 
       - name: Check index is up to date
-        run: |
-          if [ -d wiki ]; then
-            uv run python scripts/rebuild_index.py --check
-          else
-            echo "wiki/ not present — skipping index check"
-          fi
+        run: uv run python scripts/rebuild_index.py --check
 
       - name: Run structural lint
-        run: |
-          if [ -d wiki ]; then
-            uv run python scripts/lint.py --structural-only
-          else
-            echo "wiki/ not present — skipping structural lint"
-          fi
+        run: uv run python scripts/lint.py --structural-only
 
       - name: Syntax check all Python files
         run: |
