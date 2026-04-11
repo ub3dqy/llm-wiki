@@ -49,50 +49,77 @@ def parse_hook_stdin() -> dict | None:
         return None
 
 
+def get_transcript_path(hook_input: dict) -> str:
+    """Extract transcript_path from top-level hook payload."""
+    value = hook_input.get("transcript_path", "")
+    return value if isinstance(value, str) else ""
+
+
+def get_prompt(hook_input: dict) -> str:
+    """Extract prompt from top-level hook payload."""
+    value = hook_input.get("prompt", "")
+    return value if isinstance(value, str) else ""
+
+
 def extract_conversation_context(
     transcript_path: Path,
     max_turns: int = MAX_TURNS,
     max_chars: int = MAX_CONTEXT_CHARS,
 ) -> tuple[str, int]:
-    """Read JSONL transcript and extract last ~N conversation turns as markdown.
+    """Read transcript and extract last ~N conversation turns as markdown.
+
+    Auto-detects JSONL vs JSON array format.
 
     Returns (context_text, turn_count).
     """
     turns: list[str] = []
 
-    with open(transcript_path, encoding="utf-8") as f:
-        for line in f:
+    text = transcript_path.read_text(encoding="utf-8")
+    stripped = text.strip()
+
+    if stripped.startswith("["):
+        try:
+            entries = json.loads(stripped)
+        except json.JSONDecodeError:
+            entries = []
+    else:
+        entries = []
+        for line in text.splitlines():
             line = line.strip()
             if not line:
                 continue
             try:
-                entry = json.loads(line)
+                entries.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
 
-            msg = entry.get("message", {})
-            if isinstance(msg, dict):
-                role = msg.get("role", "")
-                content = msg.get("content", "")
-            else:
-                role = entry.get("role", "")
-                content = entry.get("content", "")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
 
-            if role not in ("user", "assistant"):
-                continue
+        msg = entry.get("message", {})
+        if isinstance(msg, dict):
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+        else:
+            role = entry.get("role", "")
+            content = entry.get("content", "")
 
-            if isinstance(content, list):
-                text_parts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif isinstance(block, str):
-                        text_parts.append(block)
-                content = "\n".join(text_parts)
+        if role not in ("user", "assistant"):
+            continue
 
-            if isinstance(content, str) and content.strip():
-                label = "User" if role == "user" else "Assistant"
-                turns.append(f"**{label}:** {content.strip()}\n")
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            content = "\n".join(text_parts)
+
+        if isinstance(content, str) and content.strip():
+            label = "User" if role == "user" else "Assistant"
+            turns.append(f"**{label}:** {content.strip()}\n")
 
     recent = turns[-max_turns:]
     context = "\n".join(recent)

@@ -106,6 +106,29 @@ Files to update:
 - `~/.claude/skills/wiki-save/SKILL.md` (wiki paths)
 - `~/.claude/CLAUDE.md` (global instructions)
 
+### Codex CLI Setup
+
+Codex hooks are currently run from WSL in this repo. Keep the hook commands on
+Linux-style paths and use an isolated WSL `uv` environment so the repo's
+Windows `.venv` is never rewritten by Linux.
+
+1. Enable hooks in `~/.codex/config.toml`:
+
+```toml
+[features]
+codex_hooks = true
+```
+
+2. Create `~/.codex/AGENTS.md` with the global wiki-first instructions.
+3. Copy [`codex-hooks.example.json`](codex-hooks.example.json) to `~/.codex/hooks.json`.
+4. Keep the hook commands WSL-safe inside WSL:
+
+```bash
+UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory "/mnt/e/Project/memory claude/memory claude" python hooks/codex/session-start.py
+```
+
+5. Start Codex from WSL and run the smoke checks from [`docs/codex-integration-plan.md`](docs/codex-integration-plan.md).
+
 ## Usage
 
 ### Automatic (hooks do everything)

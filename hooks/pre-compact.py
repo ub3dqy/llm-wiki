@@ -21,7 +21,7 @@ SCRIPTS_DIR = ROOT / "scripts"
 
 # Import shared extraction logic
 sys.path.insert(0, str(ROOT / "hooks"))
-from hook_utils import check_debounce, extract_conversation_context, parse_hook_stdin, update_debounce
+from hook_utils import check_debounce, extract_conversation_context, parse_hook_stdin, update_debounce  # noqa: E402
 
 logging.basicConfig(
     filename=str(SCRIPTS_DIR / "flush.log"),
