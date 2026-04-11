@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/mnt/e/Project/memory claude/memory claude\" python hooks/codex/session-start.py",
+            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/path/to/llm-wiki\" python hooks/codex/session-start.py",
             "statusMessage": "Loading wiki context",
             "timeout": 15
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/mnt/e/Project/memory claude/memory claude\" python hooks/codex/stop.py",
+            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/path/to/llm-wiki\" python hooks/codex/stop.py",
             "timeout": 10
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/mnt/e/Project/memory claude/memory claude\" python hooks/codex/user-prompt-wiki.py",
+            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/path/to/llm-wiki\" python hooks/codex/user-prompt-wiki.py",
             "statusMessage": "Wiki lookup",
             "timeout": 5
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/mnt/e/Project/memory claude/memory claude\" python hooks/codex/post-tool-capture.py",
+            "command": "UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory \"/path/to/llm-wiki\" python hooks/codex/post-tool-capture.py",
             "timeout": 3
           }
         ]

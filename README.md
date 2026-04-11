@@ -1,6 +1,6 @@
-# LLM Wiki — Persistent Memory for Claude Code
+# LLM Wiki — Persistent Memory for Claude Code & Codex CLI
 
-A global knowledge base that gives Claude Code **persistent memory across all projects, sessions, and environments** (CLI, VS Code, JetBrains). Knowledge is captured automatically from conversations, compiled into structured wiki articles, and injected back into future sessions — so Claude never starts from zero.
+A global knowledge base that gives Claude Code and Codex CLI **persistent memory across all projects, sessions, and environments** (CLI, VS Code, JetBrains). Knowledge is captured automatically from conversations, compiled into structured wiki articles, and injected back into future sessions — so Claude never starts from zero.
 
 Built on two foundations:
 - [**Karpathy's LLM Wiki**](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the three-layer architecture pattern (raw sources → daily logs → wiki articles)
@@ -25,12 +25,13 @@ This project extends both sources with significant improvements:
 | Recent changes | None | **Recent Wiki Changes (48h)** section in SessionStart |
 | Agent SDK retry | None | **Retry on timeout** with exponential backoff |
 | State management | Unbounded growth | **Pruning** (max 50 sessions in state) |
+| Multi-agent support | Claude Code only | **Claude Code + Codex CLI** with shared wiki |
 
 ## How it works
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Any Claude Code Session                    │
+│              Any Claude Code / Codex CLI Session              │
 │                  (CLI, VS Code, JetBrains)                   │
 └──────┬──────────────────┬───────────────────┬───────────────┘
        │                  │                   │
@@ -51,7 +52,7 @@ This project extends both sources with significant improvements:
   using wiki knowledge ◄──────────── Knowledge persists
 ```
 
-### Six hooks power the system
+### Claude Code: six hooks power the system
 
 | Hook | When | What it does |
 |---|---|---|
@@ -61,6 +62,17 @@ This project extends both sources with significant improvements:
 | **UserPromptSubmit** | Before each prompt | Finds and injects wiki articles matching prompt keywords |
 | **PostToolUse** | After Bash commands (async) | Captures git commits, test runs as micro-entries |
 | **Stop** | After each Claude response | Reminds about `/wiki-save` when architectural decisions detected |
+
+### Codex CLI: four hooks
+
+| Hook | When | What it does |
+|---|---|---|
+| **SessionStart** | Session begins | Injects wiki index + project context |
+| **UserPromptSubmit** | Before each prompt | Targeted article injection by keywords |
+| **PostToolUse** | After shell commands (async) | Captures git commits, test runs as micro-entries |
+| **Stop** | After each response | Wiki-save reminder for architectural decisions |
+
+Codex hooks run from WSL with an isolated `uv` environment. See [Codex CLI Setup](#codex-cli-setup) for details.
 
 ## Quick Start
 
@@ -97,8 +109,8 @@ cp -r skills/wiki-save ~/.claude/skills/wiki-save
 All paths in hook commands and skill files must point to your wiki clone location. Search and replace the example path with your actual path:
 
 ```
-# Example: replace all occurrences
-E:/Project/memory claude/memory claude  →  /your/path/to/llm-wiki
+# Example: replace all occurrences of the placeholder path
+/path/to/llm-wiki  →  /your/actual/path/to/llm-wiki
 ```
 
 Files to update:
@@ -124,16 +136,16 @@ codex_hooks = true
 4. Keep the hook commands WSL-safe inside WSL:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory "/mnt/e/Project/memory claude/memory claude" python hooks/codex/session-start.py
+UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory "/path/to/llm-wiki" python hooks/codex/session-start.py
 ```
 
-5. Start Codex from WSL and run the smoke checks from [`docs/codex-integration-plan.md`](docs/codex-integration-plan.md).
+5. Start Codex from WSL and verify that the SessionStart hook injects wiki context.
 
 ## Usage
 
 ### Automatic (hooks do everything)
 
-Just use Claude Code normally. The hooks will:
+Just use Claude Code or Codex CLI normally. The hooks will:
 1. Inject wiki context at session start
 2. Inject relevant articles when you ask questions
 3. Capture knowledge when sessions end
@@ -185,7 +197,12 @@ Instantly creates or updates a wiki article from the current conversation. Works
 │   ├── user-prompt-wiki.py    # Per-prompt targeted article injection
 │   ├── post-tool-capture.py   # Async capture of git/test events
 │   ├── stop-wiki-reminder.py  # Remind about /wiki-save
-│   └── hook_utils.py          # Shared utilities (parse stdin, debounce)
+│   ├── hook_utils.py          # Shared utilities (parse stdin, debounce)
+│   └── codex/                 # Codex CLI hook scripts (WSL)
+│       ├── session-start.py       # Inject wiki context for Codex
+│       ├── user-prompt-wiki.py    # Per-prompt article injection
+│       ├── post-tool-capture.py   # Async capture of git/test events
+│       └── stop.py                # Wiki-save reminder
 │
 ├── scripts/               # Python scripts
 │   ├── config.py              # Path constants
@@ -293,6 +310,7 @@ echo '{}' | uv run python hooks/session-start.py | python -c "import sys,json; p
 - [Andrej Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — LLM Wiki concept and three-layer architecture pattern
 - [Cole Medin (coleam00)](https://github.com/coleam00/claude-memory-compiler) — Memory Compiler implementation with Claude Code hooks and Agent SDK
 - [Claude Code](https://claude.ai/code) — The AI coding tool this system extends
+- [Codex CLI](https://github.com/openai/codex) — OpenAI's CLI agent, also supported via hooks
 - [claude-agent-sdk](https://pypi.org/project/claude-agent-sdk/) — Python SDK for programmatic Claude Code sessions
 
 ## Community

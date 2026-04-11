@@ -14,10 +14,10 @@ Save a topic or concept to the global LLM Wiki immediately — no waiting for se
 
 ## Wiki Location
 
-- **Root:** `E:/Project/memory claude/memory claude/`
-- **Articles:** `E:/Project/memory claude/memory claude/wiki/`
-- **Index:** `E:/Project/memory claude/memory claude/index.md`
-- **Log:** `E:/Project/memory claude/memory claude/log.md`
+- **Root:** `/path/to/llm-wiki/`
+- **Articles:** `/path/to/llm-wiki/wiki/`
+- **Index:** `/path/to/llm-wiki/index.md`
+- **Log:** `/path/to/llm-wiki/log.md`
 
 ## Article directories
 
@@ -37,7 +37,7 @@ If no topic is given, ask: "What topic should I create/update a wiki article for
 
 ### Step 1: Check existing articles
 
-Read the wiki index at `E:/Project/memory claude/memory claude/index.md`.
+Read the wiki index at `/path/to/llm-wiki/index.md`.
 Check if an article for this topic already exists.
 
 ### Step 2: Create or update
@@ -81,14 +81,14 @@ Use `[[section/slug]]` format for ALL cross-references (e.g., `[[concepts/redis-
 
 ### Step 4: Update index.md
 
-Add a new line under the appropriate section header in `E:/Project/memory claude/memory claude/index.md`.
+Add a new line under the appropriate section header in `/path/to/llm-wiki/index.md`.
 Format: `- [[section/slug]] — Brief one-line description`
 
 If the article already exists in the index, leave the line as is.
 
 ### Step 5: Append to log.md
 
-Append to `E:/Project/memory claude/memory claude/log.md`:
+Append to `/path/to/llm-wiki/log.md`:
 
 ```
 ## [<ISO timestamp>] wiki-save | <topic>

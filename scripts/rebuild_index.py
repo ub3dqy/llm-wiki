@@ -120,6 +120,9 @@ def build_by_project_section(meta: dict[str, dict], enriched_lines: list[str]) -
 def rebuild_index() -> str:
     """Read index.md, enrich all wikilink lines, add By Project section."""
     meta = build_article_metadata_map()
+    if not INDEX_FILE.exists():
+        print(f"Warning: {INDEX_FILE} not found — nothing to rebuild.", file=sys.stderr)
+        sys.exit(0)
     original = INDEX_FILE.read_text(encoding="utf-8")
 
     # Strip existing By Project section
