@@ -14,19 +14,16 @@ jobs:
 
       - name: Check for personal data in tracked files
         run: |
-          # Patterns that should never appear in the repo
-          # Add your own patterns here after cloning
-          PATTERNS="E:/Project|/mnt/e/Project|/mnt/c/Users|C:\\\\Users"
-
+          # Scan all tracked files except this workflow itself
           echo "Scanning all tracked files for personal data patterns..."
-          FOUND=$(git ls-files | xargs grep -rlE "$PATTERNS" 2>/dev/null || true)
+          FOUND=$(git ls-files | grep -v 'personal-data-check.yml' | xargs grep -rlP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' 2>/dev/null || true)
 
           if [ -n "$FOUND" ]; then
             echo "::error::Personal data found in the following files:"
             echo "$FOUND"
             echo ""
             echo "Details:"
-            git ls-files | xargs grep -nE "$PATTERNS" 2>/dev/null || true
+            echo "$FOUND" | xargs grep -nP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' 2>/dev/null || true
             exit 1
           fi
 
