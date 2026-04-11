@@ -28,6 +28,10 @@ log.md
 index.md
 docs/
 
+# Working configs with personal paths (use .example versions)
+skills/wiki-save/SKILL.md
+codex-hooks.example.json
+
 # OS
 .DS_Store
 Thumbs.db

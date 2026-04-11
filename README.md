@@ -120,7 +120,7 @@ codex_hooks = true
 ```
 
 2. Create `~/.codex/AGENTS.md` with the global wiki-first instructions.
-3. Copy [`codex-hooks.example.json`](codex-hooks.example.json) to `~/.codex/hooks.json`.
+3. Copy [`codex-hooks.template.json`](codex-hooks.template.json) to `~/.codex/hooks.json`.
 4. Keep the hook commands WSL-safe inside WSL:
 
 ```bash
