@@ -19,6 +19,14 @@ uv.lock
 # Obsidian
 .obsidian/
 
+# Personal content (not shared in repo)
+wiki/
+daily/
+raw/
+reports/
+log.md
+index.md
+
 # OS
 .DS_Store
 Thumbs.db
