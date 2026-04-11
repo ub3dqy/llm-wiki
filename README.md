@@ -98,7 +98,7 @@ All paths in hook commands and skill files must point to your wiki clone locatio
 
 ```
 # Example: replace all occurrences
-E:/Project/memory claude/memory claude  →  /your/path/to/llm-wiki
+/path/to/llm-wiki  →  /your/actual/path/to/llm-wiki
 ```
 
 Files to update:
@@ -124,10 +124,10 @@ codex_hooks = true
 4. Keep the hook commands WSL-safe inside WSL:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory "/mnt/e/Project/memory claude/memory claude" python hooks/codex/session-start.py
+UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory "/path/to/llm-wiki" python hooks/codex/session-start.py
 ```
 
-5. Start Codex from WSL and run the smoke checks from [`docs/codex-integration-plan.md`](docs/codex-integration-plan.md).
+5. Start Codex from WSL and verify that the SessionStart hook injects wiki context.
 
 ## Usage
 
