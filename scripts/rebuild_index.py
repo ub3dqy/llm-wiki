@@ -153,6 +153,10 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="Exit 1 if index is out of date")
     args = parser.parse_args()
 
+    if not INDEX_FILE.exists():
+        print(f"index.md not found at {INDEX_FILE} — skipping.")
+        sys.exit(0)
+
     content = rebuild_index()
 
     if args.check:

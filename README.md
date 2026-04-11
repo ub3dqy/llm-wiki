@@ -1,6 +1,6 @@
-# LLM Wiki — Persistent Memory for Claude Code
+# LLM Wiki — Persistent Memory for Claude Code & Codex CLI
 
-A global knowledge base that gives Claude Code **persistent memory across all projects, sessions, and environments** (CLI, VS Code, JetBrains). Knowledge is captured automatically from conversations, compiled into structured wiki articles, and injected back into future sessions — so Claude never starts from zero.
+A global knowledge base that gives Claude Code and Codex CLI **persistent memory across all projects, sessions, and environments** (CLI, VS Code, JetBrains). Knowledge is captured automatically from conversations, compiled into structured wiki articles, and injected back into future sessions — so Claude never starts from zero.
 
 Built on two foundations:
 - [**Karpathy's LLM Wiki**](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the three-layer architecture pattern (raw sources → daily logs → wiki articles)
