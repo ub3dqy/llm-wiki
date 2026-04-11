@@ -131,4 +131,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Never block tool execution due to hook errors
+        pass

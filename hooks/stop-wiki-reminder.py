@@ -135,4 +135,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Never block Claude's response due to hook errors
+        pass

@@ -179,4 +179,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Never block user prompt due to hook errors
+        pass
