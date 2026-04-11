@@ -1,6 +1,9 @@
-# План: Интеграция LLM Wiki с OpenAI Codex CLI (v3 — финальный)
+# План: Интеграция LLM Wiki с OpenAI Codex CLI (v3.1 — финальный)
 
-> **Этот план прошёл два раунда аудита Codex CLI агентом** и исправлен по результатам сверки с официальной документацией OpenAI. v1 содержала 4 критические ошибки (stdin format, tool_name, global AGENTS.md, Windows hooks). v2 исправила их. v3 добавляет полные payload schemas, уточняет формулировки по совместимости форматов и hook types.
+> **Этот план прошёл три раунда аудита Codex CLI агентом** и исправлен по результатам сверки с официальной документацией OpenAI.
+> - **v1 → v2**: 8 критических ошибок (stdin format, tool_name, AGENTS.md, Windows, async, matcher, version check)
+> - **v2 → v3**: 8 уточнений (полные schemas, формулировки, cwd, nullable, skills, generated schemas)
+> - **v3 → v3.1**: 3 финальные правки (matcher default, Stop как отдельная реализация, совместимость disclaimer)
 
 ## Контекст
 
@@ -197,9 +200,11 @@ DO NOT:
 > **Примечание:** Для точного wire format вашей установленной версии Codex используйте:
 > `codex app-server generate-json-schema --out ./schemas`
 
-### Совместимость с Claude Code
+### Практическая совместимость с Claude Code
 
-Для полей, которые используют наши хуки (`cwd`, `transcript_path`, `prompt`, `tool_name`, `tool_input.command`), Codex использует top-level payload, который **хорошо совпадает** с текущим форматом Claude Code хуков. Это позволяет переиспользовать большинство парсинг-логики без изменений.
+Для полей, которые используют наши хуки (`cwd`, `transcript_path`, `prompt`, `tool_name`, `tool_input.command`), Codex использует top-level payload, который **практически совпадает** с текущим форматом Claude Code хуков. Это позволяет переиспользовать парсинг-логику без изменений для SessionStart, UserPromptSubmit и PostToolUse.
+
+> **Оговорка:** Это практическое совпадение для конкретных полей, а не формальное утверждение о полном равенстве wire contract'ов двух систем. Официальная документация OpenAI описывает именно Codex payload; совпадение с Claude Code — эмпирическое наблюдение, не гарантированный контракт.
 
 Дополнительные поля Codex (`model`, `permission_mode`, `turn_id`, `tool_use_id`, `tool_response`) наши хуки могут безопасно игнорировать — они нужны только для advanced use cases.
 
@@ -212,16 +217,15 @@ DO NOT:
 
 ## Шаг 4: hooks/codex/ — минимальные обёртки
 
-Поскольку stdin format одинаковый, Codex хуки могут быть **тонкими обёртками** или даже **симлинками** на Claude Code хуки.
+SessionStart и UserPromptSubmit могут быть **тонкими обёртками** вокруг shared-логики — их stdin/output контракт практически совпадает с Claude Code. Stop требует **отдельной реализации** из-за его turn-scoped семантики (matcher не используется, `stop_hook_active` — обязательное поле, plain text stdout невалиден — ожидается JSON).
 
-### hooks/codex/session-start.py
+### hooks/codex/session-start.py (обёртка)
 
 ```python
-"""Codex SessionStart: reuse Claude Code session-start logic."""
+"""Codex SessionStart: reuse shared context logic."""
 import sys
 from pathlib import Path
 
-# Add hooks/ to path for shared imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_context import build_context_and_output
 
@@ -229,24 +233,10 @@ if __name__ == "__main__":
     build_context_and_output()
 ```
 
-### hooks/codex/stop.py
+### hooks/codex/user-prompt-wiki.py (обёртка)
 
 ```python
-"""Codex Stop: capture transcript (analog of Claude SessionEnd).
-
-CRITICAL: Stop fires after EVERY response, not just at session end.
-Must have strict debounce (60s) and high MIN_TURNS (6).
-"""
-# ... same logic as Claude session-end.py but with:
-# - DEBOUNCE_SEC = 60 (not 10)
-# - MIN_TURNS = 6 (not 4)
-# - Parse stop_hook_active to avoid re-trigger
-```
-
-### hooks/codex/user-prompt-wiki.py
-
-```python
-"""Codex UserPromptSubmit: reuse Claude Code user-prompt-wiki logic."""
+"""Codex UserPromptSubmit: reuse shared wiki search logic."""
 import sys
 from pathlib import Path
 
@@ -257,19 +247,40 @@ if __name__ == "__main__":
     find_and_inject_articles()
 ```
 
-### hooks/codex/post-tool-capture.py
+### hooks/codex/stop.py (отдельная реализация)
+
+```python
+"""Codex Stop: capture transcript (analog of Claude SessionEnd).
+
+CRITICAL differences from Claude SessionEnd:
+- Stop fires after EVERY response, not just at session end → strict debounce (60s)
+- stop_hook_active field must be checked to avoid re-trigger loops
+- Matcher is NOT used for Stop events
+- Exit 0 expects JSON on stdout; plain text is invalid
+- MIN_TURNS higher (6 vs 4) because Stop fires much more frequently
+"""
+# Dedicated implementation — uses shared utilities (hook_utils.py)
+# but NOT a thin wrapper around Claude session-end.py
+# Key params:
+# - DEBOUNCE_SEC = 60
+# - MIN_TURNS = 6
+# - Check stop_hook_active before processing
+# - Spawn flush.py as background process (same as Claude)
+```
+
+### hooks/codex/post-tool-capture.py (обёртка)
 
 ```python
 """Codex PostToolUse: capture Bash commands.
 
-IMPORTANT: 
+NOTE:
 - tool_name is "Bash" (NOT "local_shell")
 - tool_input.command is a string (NOT an array)
 - Codex does NOT support async: true — this hook is SYNC
-- Only Bash tools are intercepted (not Write, MCP, etc.)
+- Only Bash tools are intercepted (not Write, MCP, WebSearch)
+- Same tool_name and tool_input format as Claude Code
 """
-# Same logic as Claude post-tool-capture.py
-# No changes needed — tool_name and tool_input format is identical
+# Can reuse Claude post-tool-capture.py logic directly
 ```
 
 ---
@@ -317,7 +328,7 @@ def get_prompt(hook_input: dict) -> str:
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear",
+        "matcher": "startup|resume",
         "hooks": [
           {
             "type": "command",
@@ -371,7 +382,7 @@ def get_prompt(hook_input: dict) -> str:
 - Пути через WSL: `/mnt/e/...` (не `E:/...`)
 - matcher PostToolUse: `"Bash"` (не `"local_shell"`)
 - Нет `async: true` — все хуки синхронные
-- SessionStart matcher включает `clear` (version-sensitive — official docs показывают `startup|resume`, generated schema добавляет `clear`. Проверить на установленной версии)
+- SessionStart matcher: базовый `startup|resume` (по official docs). Опционально добавить `clear` после проверки на установленной версии — generated schema его допускает, но docs пока не документируют
 
 ---
 
@@ -544,10 +555,18 @@ codex app-server generate-json-schema --out ./schemas
 | # | Уточнение | Было в v2 | Стало в v3 |
 |---|---|---|---|
 | 9 | Payload schemas неполные | Только ключевые поля | **Полные schemas** с `model`, `permission_mode`, `turn_id`, `tool_use_id`, `tool_response` |
-| 10 | "Формат одинаковый" | Утверждение без оговорок | **"Хорошо совпадает"** — корректная формулировка без неподтверждённого сравнения |
+| 10 | "Формат одинаковый" | Утверждение без оговорок | **"Практически совпадает"** — эмпирическое наблюдение, не гарантированный контракт |
 | 11 | "Только command hooks" | Категоричная формулировка | **"Документирован только command"** — для production опираемся на него |
 | 12 | SessionStart `clear` | Без оговорок | **Version-sensitive** — docs = startup+resume, schema = +clear |
 | 13 | cwd vs working dir | Не упоминалось | **Добавлено** — использовать stdin `cwd`, не `Path.cwd()` |
 | 14 | transcript_path nullable | Не упоминалось | **Добавлено** — schema допускает `null` |
 | 15 | Skills ≠ slash commands | `/wiki-save` для Codex | **Уточнено** — Codex: `$skill-name`, не `/skill-name` |
 | 16 | Generated schemas | Не упоминалось | **Добавлена команда** `codex app-server generate-json-schema` |
+
+### v3 финальные правки (третий раунд аудита)
+
+| # | Правка | Что изменено |
+|---|---|---|
+| 17 | SessionStart matcher | Базовый `startup\|resume` в примере hooks.json. `clear` — опция после проверки версии |
+| 18 | Stop — отдельная реализация | Убрана формулировка "симлинки для всех хуков". Stop явно выделен как отдельная реализация из-за turn-scoped семантики |
+| 19 | Совместимость формулировка | Добавлена оговорка: практическое совпадение, не формальное равенство wire contract'ов |

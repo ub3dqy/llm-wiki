@@ -1,0 +1,56 @@
+name: Wiki Lint
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'wiki/**'
+      - 'index.md'
+      - 'scripts/**'
+      - 'hooks/**'
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Check index is up to date
+        run: uv run python scripts/rebuild_index.py --check
+
+      - name: Run structural lint
+        run: uv run python scripts/lint.py --structural-only
+
+      - name: Syntax check all Python files
+        run: |
+          uv run python -c "
+          import ast, sys
+          files = [
+              'scripts/flush.py', 'scripts/compile.py', 'scripts/query.py',
+              'scripts/lint.py', 'scripts/utils.py', 'scripts/config.py',
+              'scripts/rebuild_index.py', 'scripts/seed.py', 'scripts/wiki_cli.py',
+              'hooks/session-start.py', 'hooks/session-end.py',
+              'hooks/pre-compact.py', 'hooks/hook_utils.py',
+              'hooks/user-prompt-wiki.py', 'hooks/post-tool-capture.py',
+              'hooks/stop-wiki-reminder.py',
+          ]
+          errors = 0
+          for f in files:
+              try:
+                  ast.parse(open(f).read())
+              except SyntaxError as e:
+                  print(f'FAIL {f}: {e}')
+                  errors += 1
+          if errors:
+              sys.exit(1)
+          print(f'All {len(files)} files OK')
+          "
