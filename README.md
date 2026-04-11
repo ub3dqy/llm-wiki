@@ -236,8 +236,10 @@ Without limits, closing multiple sessions simultaneously spawns hundreds of node
 ### After updating Codex CLI
 
 ```bash
-# 1. Regenerate JSON schemas for your version
-codex app-server generate-json-schema --out ./schemas
+# 1. Check generated hook schemas in official repo
+# Source of truth: openai/codex → codex-rs/hooks/schema/generated/
+# NOTE: `codex app-server generate-json-schema` generates app-server
+# protocol schemas, NOT hook payload schemas
 
 # 2. Compare payload fields against hook scripts
 # Check: session-start.py, stop.py, user-prompt-wiki.py, post-tool-capture.py
