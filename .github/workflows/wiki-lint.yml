@@ -25,10 +25,20 @@ jobs:
         run: uv sync
 
       - name: Check index is up to date
-        run: uv run python scripts/rebuild_index.py --check
+        run: |
+          if [ -d wiki ]; then
+            uv run python scripts/rebuild_index.py --check
+          else
+            echo "wiki/ not present — skipping index check"
+          fi
 
       - name: Run structural lint
-        run: uv run python scripts/lint.py --structural-only
+        run: |
+          if [ -d wiki ]; then
+            uv run python scripts/lint.py --structural-only
+          else
+            echo "wiki/ not present — skipping structural lint"
+          fi
 
       - name: Syntax check all Python files
         run: |
