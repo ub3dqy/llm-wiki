@@ -54,3 +54,10 @@ updated: 2026-04-10
 - Article: [[concepts/agent-notification-system]]
 - Action: updated (расширена архитектура: 3-слойная модель, типы уведомлений, Prisma-модель, API endpoints, контекст агента)
 - Project: office
+
+## [2026-04-11T20:50:00+03:00] wiki-save | SEO стратегии и семантический подход 2026
+
+- Article: [[concepts/seo-ai-strategy-2026]]
+- Action: created
+- Source: NotebookLM аналитический отчёт (21 источник)
+- Project: personal

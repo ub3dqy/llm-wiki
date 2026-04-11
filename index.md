@@ -41,6 +41,7 @@ updated: 2026-04-11
 - [[concepts/flutter-adb-testing]] — Ограничения ADB input text с Flutter TextField, координаты устройств [messenger] (307w)
 - [[concepts/pulse-testing-methodology]] — API-first тестирование Pulse: OTP bypass, phantom sessions, workaround'ы [messenger] (308w)
 - [[concepts/claude-code-context-limits]] — Управление контекстом Claude Code при работе со скриншотами [memory-claude] (240w)
+- [[concepts/seo-ai-strategy-2026]] — SEO в эпоху ИИ: GEO, AEO, Semrush vs Ahrefs, семантический подход [personal]
 
 ## Connections
 
