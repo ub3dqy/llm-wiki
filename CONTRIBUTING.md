@@ -17,7 +17,8 @@ Please check these in order:
 - Bug or broken behavior: open a bug report issue
 - Installation or onboarding problem: open an installation issue
 - New idea or improvement: open a feature request
-- Questions, usage examples, and feedback: use GitHub Discussions when enabled
+- Questions, usage examples, and feedback: use GitHub Discussions
+  (or the "use case" issue form if Discussions are not active in this repo)
 
 ## Pull request guidelines
 
@@ -33,9 +34,11 @@ Please keep pull requests focused and include:
 Do not commit:
 
 - personal paths
-- user-specific `.local.json` files
+- user-specific `.local.json` files (e.g. `scripts/project_aliases.local.json`)
+- `.env` (local configuration overrides — use `.env.example` as the public template)
 - cloned wiki content under `wiki/`, `daily/`, `raw/`, or `reports/`
-- edits to global files like `~/.claude/settings.json` or `~/.codex/hooks.json`
+- edits to your own `~/.claude/settings.json` or `~/.codex/hooks.json`
+  (those are per-machine and must not be pushed upstream)
 
 Use the tracked `.example` and `.template` files as the public version of local config.
 
@@ -43,15 +46,23 @@ Use the tracked `.example` and `.template` files as the public version of local 
 
 Required local gate before proposing a merge:
 
-- `python scripts/doctor.py --quick`
-- `python scripts/wiki_cli.py lint`
+- `uv run python scripts/doctor.py --quick`
+- `uv run python scripts/wiki_cli.py lint`
 
 Recommended manual pre-merge check:
 
-- `python scripts/doctor.py --full`
+- `uv run python scripts/doctor.py --full` — includes the end-to-end
+  `flush_roundtrip` check that simulates SessionEnd with a dummy transcript
+  and verifies the full `session-end -> flush.py` chain runs in test mode.
 
 Advisory knowledge review:
 
-- `python scripts/wiki_cli.py lint --full`
+- `uv run python scripts/wiki_cli.py lint --full`
 
 The contradiction review in `lint --full` is non-deterministic and must not be used as a merge gate.
+
+## Related documents
+
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — community expectations
+- [SECURITY.md](SECURITY.md) — how to report vulnerabilities privately
+- [SUPPORT.md](SUPPORT.md) — where to get help
