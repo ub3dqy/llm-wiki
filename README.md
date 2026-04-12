@@ -1,26 +1,68 @@
 # LLM Wiki — Persistent Memory for Claude Code & Codex CLI
 
-A global knowledge base that gives Claude Code and Codex CLI **persistent memory across all projects, sessions, and environments** (CLI, VS Code, JetBrains). Knowledge is captured automatically from conversations, compiled into structured wiki articles, and injected back into future sessions — so Claude never starts from zero.
+Claude Code and Codex CLI **forget everything when a session ends.** Every morning you re-explain the same architecture decisions, the same gotchas, the same *"why we chose X over Y"*. This repository gives them persistent memory that survives across sessions, projects, machines, and IDEs.
 
-Built on two foundations:
-- [**Karpathy's LLM Wiki**](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the three-layer architecture pattern (raw sources → daily logs → wiki articles)
-- [**coleam00/claude-memory-compiler**](https://github.com/coleam00/claude-memory-compiler) — auto-capture via Claude Code hooks + Agent SDK compilation
+Built on prior work: [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern and [`coleam00/claude-memory-compiler`](https://github.com/coleam00/claude-memory-compiler) — see [Credits](#credits) for full attribution.
 
-## Who this is for
+## Why you'll want this
 
-This repository is for people who want:
+If you use Claude Code or Codex daily on non-trivial projects, you probably have these frustrations:
 
-- durable memory across Claude Code and Codex sessions
-- a structured markdown knowledge base instead of ad hoc notes
-- automatic capture of reusable implementation knowledge
-- a repo they can fork and adapt to their own workflows
+- Every new session starts with Claude not knowing your codebase conventions, and you re-explain them
+- Important reasoning from yesterday's debugging session is lost — only the final diff survives in git
+- You already tried stuffing everything into `CLAUDE.md`, but it grew unmaintainable and still missed the nuance
+- You looked at vector-database memory solutions (mem0, Letta) and decided that running Qdrant for personal dev work is too much infrastructure
 
-If that sounds like your setup, the quickest path is:
+**This project solves all four** by building a structured markdown wiki that auto-captures from your sessions:
 
-1. clone the repo
-2. run `uv sync`
-3. run `uv run python scripts/setup.py`
-4. run `uv run python scripts/doctor.py --quick`
+- **Zero infrastructure.** No vector DB, no embeddings, no background services. Just markdown files in git and a handful of Python scripts.
+- **Automatic capture.** Hooks fire on `SessionEnd` and `PreCompact`, the transcript goes to Claude Agent SDK, and it decides what's worth saving. No manual note-taking.
+- **Targeted retrieval.** Before every prompt, a fast keyword search across the wiki injects 3–5 relevant articles into context. Token cost: a couple thousand, not two hundred thousand.
+- **Works with Claude Code *and* Codex.** Same wiki, both hook systems. Switch CLIs without losing memory.
+- **Obsidian-compatible.** Everything is plain markdown with `[[wikilinks]]` — open `wiki/` in Obsidian for graph browsing.
+- **One-command bootstrap.** Four commands from fresh clone to a working system.
+
+### From clone to working in 4 commands
+
+```bash
+git clone https://github.com/YOUR_USERNAME/llm-wiki.git
+cd llm-wiki
+uv sync
+uv run python scripts/setup.py            # creates wiki/, .env, local configs
+uv run python scripts/doctor.py --quick   # verifies everything is wired
+```
+
+Then follow the `Next steps` printed by `setup.py` to wire hooks into `~/.claude/settings.json` (and optionally `~/.codex/hooks.json`).
+
+### Who this is for
+
+- Developers who use Claude Code or Codex CLI **daily** on real projects
+- People who want durable memory **across all projects**, not one `CLAUDE.md` per repo
+- Anyone who tried RAG / vector memory and found it overkill for personal dev work
+- Teams that want a **git-committable knowledge base** instead of notes scattered in Slack and Notion
+
+## Compared to alternatives
+
+| | **This project** | [coleam00/claude-memory-compiler](https://github.com/coleam00/claude-memory-compiler) | Plain `CLAUDE.md` | Vector memory (mem0, Letta) |
+|---|:---:|:---:|:---:|:---:|
+| Auto-capture from sessions | ✅ | ✅ | ❌ | ✅ |
+| Works with Codex CLI | ✅ | ❌ | ➖ | ➖ |
+| Per-prompt targeted retrieval | ✅ | ❌ (full dump) | ❌ (static) | ✅ |
+| Content-based capture threshold | ✅ | ❌ (turn-based) | — | varies |
+| Provenance labels (`confidence`, sources) | ✅ | ❌ | ❌ | varies |
+| End-to-end acceptance test | ✅ | ❌ | — | — |
+| One-command bootstrap (`setup.py`) | ✅ | ❌ | n/a | varies |
+| Zero infrastructure (no vector DB) | ✅ | ✅ | ✅ | ❌ |
+| Plain markdown + git + Obsidian | ✅ | ✅ | ✅ | ❌ |
+| Typical setup cost | **~2 min** | ~10 min | seconds | 30+ min |
+
+**Legend:** ✅ first-class · ❌ not available · ➖ partial / unofficial · — not applicable · *varies* = implementation-dependent
+
+**Against the two direct ancestors:** this fork adds Codex CLI support, content-based capture thresholds, provenance tracking, an end-to-end acceptance test, a bootstrap script, and project-aware context injection on top of `coleam00`. See [What makes this different](#what-makes-this-different) below for the full row-by-row comparison.
+
+**Against vector memory:** this project stays markdown-only — the right trade-off when your knowledge base is under ~2000 articles and you value git history, Obsidian graph browsing, and zero-infrastructure setup over pure similarity search.
+
+**Against plain `CLAUDE.md`:** static files work for stable facts ("we use TypeScript, not JavaScript"), but can't capture the *reasoning* from a debugging session or the *outcome* of yesterday's architectural discussion. This project is what you reach for when one `CLAUDE.md` per project stops scaling.
 
 ## Community and feedback
 
@@ -54,7 +96,7 @@ To make the public repository discoverable and active instead of passive, enable
 
 ## What makes this different
 
-This project extends both sources with significant improvements:
+Row-by-row comparison against the direct functional ancestor, `coleam00/claude-memory-compiler` — the features that were added on top in this fork:
 
 | Feature | coleam00 original | This project |
 |---|---|---|
