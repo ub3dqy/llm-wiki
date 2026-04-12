@@ -12,10 +12,11 @@ This runs for ALL projects — the wiki is global.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from hook_utils import infer_project_name_from_cwd, parse_frontmatter
 
 ROOT = Path(__file__).resolve().parent.parent
 WIKI_DIR = ROOT / "wiki"
@@ -26,6 +27,16 @@ MAX_CONTEXT_CHARS = 10_000
 MAX_LOG_LINES = 30
 MAX_RECENT_CHANGES = 10
 RECENT_CHANGES_DAYS = 2
+SECTION_SEPARATOR = "\n\n---\n\n"
+
+SECTION_BUDGETS = {
+    "header": 160,
+    "instructions": 3400,
+    "project": 1400,
+    "recent_changes": 900,
+    "index": 3200,
+    "recent_log": 1200,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -49,46 +60,13 @@ def read_stdin_cwd() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Frontmatter parsing (local copy — no imports from scripts/)
-# ---------------------------------------------------------------------------
-
-_FM_LINE_RE = re.compile(r"^(\w[\w-]*):\s*(.+)$")
-
-
-def _parse_frontmatter(path: Path) -> dict[str, str]:
-    """Minimal frontmatter parser for hook use."""
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---"):
-        return {}
-    end = text.find("---", 3)
-    if end == -1:
-        return {}
-    result: dict[str, str] = {}
-    for line in text[3:end].splitlines():
-        m = _FM_LINE_RE.match(line)
-        if m:
-            result[m.group(1)] = m.group(2).strip()
-    return result
-
-
-# ---------------------------------------------------------------------------
 # Project detection
 # ---------------------------------------------------------------------------
 
 
 def cwd_to_project_name(cwd: str) -> str | None:
     """Extract project name from cwd. Returns None for wiki dir or empty path."""
-    if not cwd:
-        return None
-    p = Path(cwd)
-    # Skip if cwd IS the wiki directory itself
-    try:
-        if p.resolve() == ROOT.resolve():
-            return None
-    except OSError:
-        pass
-    name = p.name.strip()
-    return name if name else None
+    return infer_project_name_from_cwd(cwd, repo_root=ROOT)
 
 
 def get_project_articles(project_name: str) -> list[tuple[str, str]]:
@@ -104,7 +82,7 @@ def get_project_articles(project_name: str) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
 
     for article in sorted(WIKI_DIR.rglob("*.md")):
-        fm = _parse_frontmatter(article)
+        fm = parse_frontmatter(article)
         raw_project = fm.get("project", "")
         projects = [p.strip().lower().replace(" ", "-").replace("_", "-") for p in raw_project.split(",")]
 
@@ -132,7 +110,7 @@ def get_recent_changes() -> list[dict]:
 
     results: list[dict] = []
     for article in WIKI_DIR.rglob("*.md"):
-        fm = _parse_frontmatter(article)
+        fm = parse_frontmatter(article)
         created_str = fm.get("created", "")
         updated_str = fm.get("updated", "")
 
@@ -182,6 +160,106 @@ def get_recent_log() -> str:
     return "(no recent daily log)"
 
 
+def trim_text(text: str, max_chars: int, suffix: str = "\n\n...(truncated)") -> str:
+    """Trim text without cutting directly through the middle of a line when possible."""
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+
+    budget = max_chars - len(suffix)
+    if budget <= 0:
+        return suffix[:max_chars]
+
+    trimmed = text[:budget]
+    boundary = max(trimmed.rfind("\n"), trimmed.rfind(". "))
+    if boundary > max_chars // 3:
+        trimmed = trimmed[:boundary].rstrip()
+    else:
+        trimmed = trimmed.rstrip()
+
+    return trimmed + suffix
+
+
+def trim_lines(lines: list[str], max_chars: int) -> str:
+    """Join as many whole lines as fit in the given budget."""
+    if max_chars <= 0 or not lines:
+        return ""
+
+    selected: list[str] = []
+    total = 0
+    for line in lines:
+        extra = len(line) + (1 if selected else 0)
+        if total + extra > max_chars:
+            break
+        selected.append(line)
+        total += extra
+
+    text = "\n".join(selected)
+    if len(selected) < len(lines):
+        text += "\n...(truncated)"
+    return text
+
+
+def build_project_section(project_name: str, max_chars: int) -> str:
+    """Build a capped project section."""
+    project_articles = get_project_articles(project_name)
+    if not project_articles:
+        return ""
+
+    intro = f"## Project: {project_name} (relevant wiki articles)\n\n"
+    lines = [f"- [[{slug}]] — {title}" for slug, title in project_articles]
+    body = trim_lines(lines, max_chars=max(0, max_chars - len(intro)))
+    return intro + body if body else ""
+
+
+def build_index_section(project_name: str | None, max_chars: int) -> str:
+    """Build a capped wiki index section, prioritizing project-relevant lines when possible."""
+    if not INDEX_FILE.exists():
+        return "## Wiki Index\n\n(empty — no articles yet)"
+
+    index_content = INDEX_FILE.read_text(encoding="utf-8")
+    prefix = "## Wiki Index\n\n"
+    body_budget = max(0, max_chars - len(prefix))
+    if len(index_content) <= body_budget:
+        return prefix + index_content
+
+    lines = index_content.splitlines()
+    selected: list[str] = []
+    used = 0
+    normalized_project = ""
+    if project_name:
+        normalized_project = project_name.lower().replace("_", "-").replace(" ", "-")
+
+    def add_line(line: str) -> bool:
+        nonlocal used
+        extra = len(line) + (1 if selected else 0)
+        if used + extra > body_budget:
+            return False
+        selected.append(line)
+        used += extra
+        return True
+
+    # Always keep the top of the index.
+    for line in lines[:22]:
+        if not add_line(line):
+            break
+
+    # Then prioritize lines mentioning the current project or its articles.
+    if normalized_project:
+        for line in lines[22:]:
+            normalized_line = line.lower().replace("_", "-").replace(" ", "-")
+            if normalized_project in normalized_line and line not in selected:
+                if not add_line(line):
+                    break
+
+    text = "\n".join(selected)
+    if len(selected) < len(lines):
+        text += "\n...(truncated; use Read on index.md for full catalog)"
+
+    return prefix + text
+
+
 # ---------------------------------------------------------------------------
 # Context assembly
 # ---------------------------------------------------------------------------
@@ -220,41 +298,41 @@ def build_context(cwd: str = "") -> str:
     parts: list[str] = []
 
     today = datetime.now(timezone.utc).astimezone()
-    parts.append(f"## Knowledge Base\nToday: {today.strftime('%A, %B %d, %Y')}")
-
-    parts.append(INSTRUCTIONS)
-
-    # Project-specific section
     project_name = cwd_to_project_name(cwd)
-    if project_name:
-        project_articles = get_project_articles(project_name)
-        if project_articles:
-            article_lines = [f"- [[{slug}]] — {title}" for slug, title in project_articles]
-            parts.append(
-                f"## Project: {project_name} (relevant wiki articles)\n\n"
-                + "\n".join(article_lines)
-            )
 
-    # Recent changes
-    recent_changes = format_recent_changes(get_recent_changes())
-    if recent_changes:
-        parts.append(recent_changes)
+    header = trim_text(
+        f"## Knowledge Base\nToday: {today.strftime('%A, %B %d, %Y')}",
+        SECTION_BUDGETS["header"],
+    )
+    instructions = trim_text(INSTRUCTIONS, SECTION_BUDGETS["instructions"])
+    project_section = build_project_section(project_name, SECTION_BUDGETS["project"]) if project_name else ""
+    recent_changes = trim_text(
+        format_recent_changes(get_recent_changes()),
+        SECTION_BUDGETS["recent_changes"],
+    )
+    index_section = build_index_section(project_name, SECTION_BUDGETS["index"])
+    recent_log = trim_text(
+        f"## Recent Daily Log\n\n{get_recent_log()}",
+        SECTION_BUDGETS["recent_log"],
+    )
 
-    # Full index
-    if INDEX_FILE.exists():
-        index_content = INDEX_FILE.read_text(encoding="utf-8")
-        parts.append(f"## Wiki Index\n\n{index_content}")
-    else:
-        parts.append("## Wiki Index\n\n(empty — no articles yet)")
+    for section in (header, instructions, project_section, recent_changes, index_section, recent_log):
+        if section.strip():
+            parts.append(section)
 
-    # Recent daily log
-    recent_log = get_recent_log()
-    parts.append(f"## Recent Daily Log\n\n{recent_log}")
-
-    context = "\n\n---\n\n".join(parts)
+    context = SECTION_SEPARATOR.join(parts)
 
     if len(context) > MAX_CONTEXT_CHARS:
-        context = context[:MAX_CONTEXT_CHARS] + "\n\n...(truncated)"
+        overflow = len(context) - MAX_CONTEXT_CHARS
+        # Trim the least important sections first.
+        if recent_log:
+            recent_log = trim_text(recent_log, max(240, len(recent_log) - overflow))
+        parts = [header, instructions, project_section, recent_changes, index_section, recent_log]
+        parts = [part for part in parts if part.strip()]
+        context = SECTION_SEPARATOR.join(parts)
+
+    if len(context) > MAX_CONTEXT_CHARS:
+        context = trim_text(context, MAX_CONTEXT_CHARS)
 
     return context
 

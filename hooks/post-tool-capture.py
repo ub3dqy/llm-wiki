@@ -22,6 +22,9 @@ SCRIPTS_DIR = ROOT / "scripts"
 DEBOUNCE_FILE = SCRIPTS_DIR / ".last-tool-capture"
 DEBOUNCE_SEC = 30
 
+sys.path.insert(0, str(ROOT / "hooks"))
+from hook_utils import infer_project_name_from_cwd  # noqa: E402
+
 # Patterns that indicate interesting Bash commands
 INTERESTING_PATTERNS = [
     ("git commit", "Git commit"),
@@ -124,7 +127,7 @@ def main() -> None:
         return
 
     cwd = hook_input.get("cwd", "")
-    project = Path(cwd).name if cwd else "unknown"
+    project = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
 
     append_micro_entry(label, command, project)
     update_debounce()

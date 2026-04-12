@@ -18,10 +18,18 @@ if os.environ.get("CLAUDE_INVOKED_BY"):
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 # Import shared extraction logic
 sys.path.insert(0, str(ROOT / "hooks"))
-from hook_utils import check_debounce, extract_conversation_context, parse_hook_stdin, update_debounce  # noqa: E402
+from hook_utils import (  # noqa: E402
+    check_debounce,
+    extract_conversation_context,
+    infer_project_name_from_cwd,
+    parse_hook_stdin,
+    update_debounce,
+)
+from runtime_utils import build_uv_python_cmd  # noqa: E402
 
 logging.basicConfig(
     filename=str(SCRIPTS_DIR / "flush.log"),
@@ -75,7 +83,7 @@ def main() -> None:
         return
 
     # Derive project name from cwd
-    project_name = Path(cwd).name if cwd else "unknown"
+    project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
 
     # Save context to temp file for flush.py
     timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
@@ -84,17 +92,16 @@ def main() -> None:
 
     flush_script = SCRIPTS_DIR / "flush.py"
 
-    cmd = [
-        "uv",
-        "run",
-        "--directory",
-        str(ROOT),
-        "python",
-        str(flush_script),
-        str(context_file),
-        session_id,
-        project_name,
-    ]
+    try:
+        cmd, env = build_uv_python_cmd(
+            flush_script,
+            [str(context_file), session_id, project_name],
+            project_dir=ROOT,
+        )
+    except FileNotFoundError as e:
+        logging.error("Failed to locate uv for flush.py: %s", e)
+        context_file.unlink(missing_ok=True)
+        return
 
     creation_flags = 0
     if sys.platform == "win32":
@@ -105,6 +112,7 @@ def main() -> None:
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
             creationflags=creation_flags,
         )
         update_debounce(DEBOUNCE_FILE)

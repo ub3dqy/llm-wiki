@@ -75,6 +75,16 @@ def extract_wikilinks(content: str) -> list[str]:
     return [link.split("|")[0] for link in raw]
 
 
+def content_has_wikilink_target(content: str, link_target: str) -> bool:
+    """Return True if markdown content contains a wikilink to the target.
+
+    Handles both plain links and alias links:
+    - [[concepts/foo]]
+    - [[concepts/foo|Display]]
+    """
+    return link_target in extract_wikilinks(content)
+
+
 def wiki_article_exists(link: str) -> bool:
     """Check whether a wikilink target resolves to a real file."""
     candidate = WIKI_DIR / f"{link}.md"
@@ -150,7 +160,7 @@ def count_inbound_links(link_target: str) -> int:
     count = 0
     for article in list_wiki_articles():
         content = article.read_text(encoding="utf-8")
-        if f"[[{link_target}]]" in content:
+        if content_has_wikilink_target(content, link_target):
             count += 1
     return count
 
@@ -193,6 +203,25 @@ def parse_frontmatter(path: Path) -> dict[str, str]:
     return result
 
 
+def parse_frontmatter_list(raw_value: str) -> list[str]:
+    """Parse a loose frontmatter list representation into plain items."""
+    text = (raw_value or "").strip()
+    if not text:
+        return []
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1]
+    parts = [part.strip().strip("'\"") for part in text.split(",")]
+    return [part for part in parts if part]
+
+
+def frontmatter_sources_include_prefix(raw_sources: str, prefix: str) -> bool:
+    """Return True if a parsed frontmatter source entry starts with the prefix."""
+    normalized_prefix = prefix.strip()
+    if not normalized_prefix:
+        return False
+    return any(source.startswith(normalized_prefix) for source in parse_frontmatter_list(raw_sources))
+
+
 def get_article_projects(path: Path) -> list[str]:
     """Return list of project tags from article frontmatter.
 
@@ -220,5 +249,8 @@ def build_article_metadata_map() -> dict[str, dict]:
             "word_count": get_article_word_count(article),
             "updated": fm.get("updated", ""),
             "title": fm.get("title", slug),
+            "confidence": fm.get("confidence", ""),
+            "sources": fm.get("sources", ""),
+            "tags": fm.get("tags", ""),
         }
     return meta

@@ -29,6 +29,7 @@ from hook_utils import (  # noqa: E402
     check_debounce,
     extract_conversation_context,
     get_transcript_path,
+    infer_project_name_from_cwd,
     parse_hook_stdin,
     update_debounce,
 )
@@ -89,7 +90,7 @@ def main() -> None:
         logging.info("SKIP: only %d turns (min %d)", turn_count, MIN_TURNS_TO_FLUSH)
         return
 
-    project_name = Path(cwd).name if cwd else "unknown"
+    project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
 
     timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
     context_file = SCRIPTS_DIR / f"session-flush-{session_id}-{timestamp}.md"
@@ -132,4 +133,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        logging.exception("Stop hook failed: %s", exc)

@@ -16,6 +16,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from runtime_utils import build_uv_python_cmd
+
 # Recursion guard: flush.py uses Agent SDK → Claude Code → hook → flush.py
 if os.environ.get("CLAUDE_INVOKED_BY"):
     sys.exit(0)
@@ -240,7 +242,11 @@ def maybe_trigger_compilation() -> None:
     if not compile_script.exists():
         return
 
-    cmd = ["uv", "run", "--directory", str(ROOT_DIR), "python", str(compile_script)]
+    try:
+        cmd, env = build_uv_python_cmd(compile_script, project_dir=ROOT_DIR)
+    except FileNotFoundError as e:
+        logging.error("Failed to locate uv for compile.py: %s", e)
+        return
 
     creation_flags = 0
     if sys.platform == "win32":
@@ -251,6 +257,7 @@ def maybe_trigger_compilation() -> None:
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
             creationflags=creation_flags,
         )
         state["last_auto_compile_date"] = today
