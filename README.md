@@ -144,12 +144,12 @@ uv run python scripts/doctor.py --quick
 ```
 
 `setup.py` is idempotent — you can safely re-run it to restore missing bootstrap files
-or recreate the local alias template.
+or recreate local templates.
 
 ### Configuration
 
 After running `setup.py`, a `.env` file is created in the repo root from
-`.env.example`. This file is gitignored - edit it freely with your local
+`.env.example`. This file is gitignored, so you can edit it freely with your local
 preferences. Supported keys:
 
 | Key | Default | Purpose |
@@ -223,7 +223,7 @@ uv run python scripts/wiki_cli.py status
 uv run python scripts/rebuild_index.py --check
 ```
 
-`doctor.py --quick` is for fast daily checks. `doctor.py --full` runs the full gate, including WSL/Codex runtime checks and hook smokes. The same modes are now available through `wiki_cli.py doctor`, and `wiki_cli.py doctor` without flags defaults to the quick mode.
+`doctor.py --quick` is for fast daily checks. `doctor.py --full` runs the full gate, including WSL/Codex runtime checks and hook smokes. The same modes are available through `wiki_cli.py doctor`, and `wiki_cli.py doctor` without flags defaults to quick mode.
 
 ### Gate roles
 
@@ -245,8 +245,6 @@ Keep these three roles separate:
    `python scripts/wiki_cli.py lint --full`  
    This includes the expensive contradiction review. Its findings are non-deterministic
    and must not be used as a merge gate.
-
-7. Start Codex from WSL and verify that the SessionStart hook injects wiki context.
 
 ### Repo-level instructions for Codex
 
@@ -306,51 +304,72 @@ Instantly creates or updates a wiki article from the current conversation. Works
 
 ```
 .
-├── CLAUDE.md              # Schema — conventions, workflows, page format
-├── index.md               # Wiki index with [project] (Nw) annotations
-├── log.md                 # Chronological operation log
-├── README.md              # This file
+├── .gitignore                 # Local-only files and generated workspace state
+├── .python-version            # Preferred Python version for local tooling
+├── AGENTS.md                   # Project-level instructions for Codex
+├── CLAUDE.md                   # Wiki schema, workflows, and conventions
+├── CODE_OF_CONDUCT.md          # Community participation guidelines
+├── CONTRIBUTING.md             # Contribution workflow for external users
+├── LICENSE
+├── README.md                   # This file
+├── SECURITY.md                 # Security reporting policy
+├── SUPPORT.md                  # Where to ask questions and get help
+├── .env.example                # Template for local .env (gitignored)
+├── .github/                    # CI workflows + issue/PR templates
+│   ├── ISSUE_TEMPLATE/         # bug, installation, feature, use-case + config
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── workflows/              # personal-data-check.yml, wiki-lint.yml
+├── codex-hooks.template.json   # Template for ~/.codex/hooks.json
+├── index.example.md            # Template for the wiki index
+├── pyproject.toml              # Python dependencies (uv)
 │
-├── hooks/                 # Claude Code hook scripts
-│   ├── session-start.py       # Inject wiki context (project-aware)
-│   ├── session-end.py         # Capture transcript → flush.py
-│   ├── pre-compact.py         # Safety net before compaction
-│   ├── user-prompt-wiki.py    # Per-prompt targeted article injection
-│   ├── post-tool-capture.py   # Async capture of git/test events
-│   ├── stop-wiki-reminder.py  # Remind about /wiki-save
-│   └── hook_utils.py          # Shared utilities (parse stdin, debounce)
+├── hooks/                      # Hook scripts for Claude Code and Codex
+│   ├── hook_utils.py           # Shared utilities + PROJECT_ALIASES loader
+│   ├── post-tool-capture.py    # Async micro-capture of git/test events
+│   ├── pre-compact.py          # Safety net before context compaction
+│   ├── session-end.py          # Capture transcript -> flush.py
+│   ├── session-start.py        # Inject wiki context at session start
+│   ├── shared_context.py       # Build context with per-section budgets
+│   ├── shared_wiki_search.py   # Weighted retrieval across wiki/
+│   ├── stop-wiki-reminder.py   # Remind about /wiki-save
+│   ├── user-prompt-wiki.py     # Per-prompt relevant article injection
+│   └── codex/                  # Codex CLI hook variants
+│       ├── post-tool-capture.py
+│       ├── session-start.py
+│       ├── stop.py
+│       └── user-prompt-wiki.py
 │
-├── scripts/               # Python scripts
-│   ├── config.py              # Path constants
-│   ├── utils.py               # Shared utilities (frontmatter, wikilinks)
-│   ├── flush.py               # Evaluate + save conversation insights
-│   ├── compile.py             # Compile daily/ → wiki/ articles
-│   ├── query.py               # Search the knowledge base
-│   ├── lint.py                # Structural + provenance health checks
-│   ├── rebuild_index.py       # Enrich index with metadata
-│   ├── seed.py                # Bootstrap wiki from project files
-│   └── wiki_cli.py            # Unified CLI interface
+├── scripts/                    # Python scripts for wiki operations
+│   ├── compile.py              # Compile daily/ logs -> wiki/ articles
+│   ├── config.py               # .env loader + WIKI_* settings + aliases
+│   ├── doctor.py               # Health-check gate (--quick / --full)
+│   ├── flush.py                # Extract insights from sessions -> daily/
+│   ├── lint.py                 # Structural + provenance lint
+│   ├── project_aliases.example.json  # Template for local aliases
+│   ├── query.py                # Query the knowledge base
+│   ├── rebuild_index.py        # Rebuild index.md from wiki metadata
+│   ├── runtime_utils.py        # uv / WSL detection + build_uv_python_cmd
+│   ├── seed.py                 # Bootstrap wiki from existing projects
+│   ├── setup.py                # Bootstrap fresh clones (idempotent)
+│   ├── utils.py                # Shared utilities (frontmatter, wikilinks)
+│   └── wiki_cli.py             # Unified CLI for doctor/query/lint/etc.
 │
-├── daily/                 # Auto-captured conversation logs
-├── raw/                   # Manual source documents for ingest
+├── settings.example.json       # Template for ~/.claude/settings.json
 │
-├── wiki/                  # LLM-maintained wiki articles
-│   ├── overview.md            # High-level synthesis
-│   ├── concepts/              # Ideas, patterns, technologies
-│   ├── entities/              # Projects, tools, organizations
-│   ├── sources/               # Summaries of ingested documents
-│   ├── connections/           # Cross-concept relationships
-│   ├── analyses/              # Filed analysis results
-│   └── qa/                    # Filed Q&A answers
-│
-├── skills/
-│   └── wiki-save/
-│       └── SKILL.md           # /wiki-save slash command
-│
-├── reports/               # Lint health-check reports
-├── pyproject.toml         # Python dependencies
-└── settings.example.json  # Example hook configuration
+└── skills/
+    └── wiki-save/
+        └── SKILL.example.md    # /wiki-save slash command template
 ```
+
+## Locally populated (gitignored — created by setup.py and runtime workflows)
+
+- `wiki/{concepts,connections,sources,entities,qa,analyses}/` — wiki articles
+- `daily/` — auto-captured daily conversation logs
+- `raw/` — manual source documents before ingest
+- `reports/` — lint reports
+- `index.md`, `log.md` — wiki index and operations log (gitignored working copies)
+- `.env` — local configuration overrides
+- `scripts/project_aliases.local.json` — local project alias overrides
 
 ## Key Design Decisions
 
@@ -416,15 +435,22 @@ Generated schemas are the **source of truth** for your installed version. Wire f
 ### After updating Claude Code
 
 ```bash
-# 1. Verify hooks still pass validation
-uv run python scripts/wiki_cli.py status
-
-# 2. Run structural lint
+# 1. Quick gate - structural checks and env settings
+uv run python scripts/doctor.py --quick
 uv run python scripts/wiki_cli.py lint
 
-# 3. Test SessionStart output
+# 2. Full gate - includes end-to-end flush roundtrip
+uv run python scripts/doctor.py --full
+
+# 3. Optional: test SessionStart output manually
 echo '{}' | uv run python hooks/session-start.py | python -c "import sys,json; print(len(json.load(sys.stdin)['hookSpecificOutput']['additionalContext']), 'chars')"
 ```
+
+`doctor.py --full` now includes a `flush_roundtrip` check that writes a dummy
+6-turn transcript, invokes `session-end.py` as a subprocess with
+`WIKI_FLUSH_TEST_MODE=1`, and verifies the full chain completes. This is the
+fastest way to confirm that a Claude Code update has not broken the capture
+pipeline.
 
 `wiki_cli.py lint` without flags now defaults to the cheap structural route. Use
 `wiki_cli.py lint --full` only when you explicitly want the contradiction review.
