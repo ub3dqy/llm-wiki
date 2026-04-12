@@ -2,10 +2,11 @@
 
 This is the schema file for the LLM Wiki. It defines the structure, conventions, and workflows that the LLM follows when maintaining this wiki.
 
-This wiki serves as a **global knowledge base across all projects**. It combines two input channels:
+This wiki serves as a **global knowledge base across all projects**. It combines three input channels:
 
 - **Manual ingest** (Karpathy pattern): external sources placed in `raw/`
 - **Auto-capture** (Memory Compiler): conversation insights captured via Claude Code hooks
+- **On-demand save**: targeted knowledge captured directly into the wiki via `/wiki-save`
 
 ## Directory Structure
 
@@ -39,7 +40,7 @@ This wiki serves as a **global knowledge base across all projects**. It combines
 │   ├── flush.py       # Extract insights from sessions → daily/
 │   ├── compile.py     # Compile daily/ → wiki/ articles
 │   ├── query.py       # Search the knowledge base
-│   └── lint.py        # 7 health checks
+│   └── lint.py        # Structural + provenance health checks
 │
 └── hooks/             # Claude Code hook scripts
     ├── session-start.py   # Inject wiki context at session start
@@ -58,6 +59,7 @@ type: source | entity | concept | analysis | connection | qa
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 sources: [list of source filenames that informed this page]
+confidence: extracted | inferred | to-verify
 project: project-name (for auto-captured content)
 tags: [relevant tags]
 ---
@@ -72,12 +74,19 @@ Content here. Use [[wikilinks]] for cross-references to other pages.
 - [[Related Page 2]]
 ```
 
+`confidence` is optional for manual ingest pages, but **required for compile-generated
+concepts/connections** from `daily/`.
+
 ## Conventions
 
 - **Language**: Wiki content follows the language of the source material. Meta-files (index, log) are in Russian unless the user specifies otherwise.
 - **Wikilinks**: Always use `[[Page Name]]` syntax for internal links (Obsidian-compatible).
 - **One concept per page**: Don't merge unrelated topics. Split when a section grows large.
 - **Source attribution**: Every claim should be traceable to a source via the `sources` frontmatter field.
+- **Confidence labels**: compile-generated articles should declare whether claims are
+  `extracted`, `inferred`, or `to-verify`.
+- **Provenance section**: compile-generated articles should include a short `## Provenance`
+  section that explains what was directly observed in the source log and what was inferred.
 - **Contradictions**: When sources disagree, note it explicitly with a `> [!warning] Contradiction` callout.
 - **Updates over rewrites**: When new information arrives, update existing pages rather than creating duplicates.
 - **Project tags**: Use the `project` frontmatter field to tag content by origin project.
@@ -102,10 +111,11 @@ Handled by `scripts/compile.py`. Triggered automatically after 18:00 or manually
 
 1. Read unprocessed daily logs from `daily/`.
 2. Extract 3-7 distinct concepts per log.
-3. Create concept articles in `wiki/concepts/` with full frontmatter.
+3. Create concept articles in `wiki/concepts/` with full frontmatter, including `confidence`.
 4. Create connection articles in `wiki/connections/` for cross-cutting insights.
 5. Update existing articles if new info relates to known concepts.
-6. Update `index.md` and append to `log.md`.
+6. Add a `## Provenance` section for compile-generated material.
+7. Update `index.md` and append to `log.md`.
 
 ### Query (answering a question)
 
@@ -113,15 +123,17 @@ Handled by `scripts/query.py` or manually.
 
 1. Read `index.md` to find relevant pages.
 2. Read the relevant wiki pages.
-3. Synthesize an answer with `[[wikilink]]` citations.
-4. If the answer is substantial, offer to file it as a new page in `wiki/qa/`.
-5. If filed, update `index.md` and append to `log.md`.
+3. Use `query.py --preview` when you want a no-cost candidate/provenance check before an Agent SDK turn.
+4. Synthesize an answer with `[[wikilink]]` citations.
+5. Separate extracted facts, inferred synthesis, and to-verify claims when it matters.
+6. If the answer is substantial, offer to file it as a new page in `wiki/qa/`.
+7. If filed, update `index.md` and append to `log.md`.
 
 ### Lint (health check)
 
 Handled by `scripts/lint.py`. Run periodically.
 
-7 checks:
+8 checks:
 
 1. **Broken links** — `[[wikilinks]]` pointing to non-existent pages
 2. **Orphan pages** — pages with zero inbound links
@@ -129,21 +141,71 @@ Handled by `scripts/lint.py`. Run periodically.
 4. **Stale articles** — source changed since compilation
 5. **Missing backlinks** — asymmetric links (A→B but no B→A)
 6. **Sparse articles** — fewer than 200 words
-7. **Contradictions** — LLM-detected conflicting claims (costs API credits)
+7. **Provenance completeness** — compile-generated concepts/connections from `daily/`
+   must have valid `confidence` and `## Provenance`
+8. **Contradictions** — LLM-detected conflicting claims (costs API credits)
+
+`scripts/doctor.py` should stay aligned with these cheap quality gates and supports
+two modes:
+
+- `--quick` for fast daily checks: index freshness, structural lint cleanliness,
+  direct `query.py --preview`, CLI `wiki_cli.py query --preview`,
+  `wiki_cli.py status`, `wiki_cli.py lint --structural-only`,
+  `wiki_cli.py rebuild --check`, and path normalization
+- `--full` for the recommended manual pre-merge check: everything in quick mode
+  plus runtime/WSL/Codex checks and hook smokes
+
+### Gate roles
+
+Keep these roles separate:
+
+1. **Required gate (CI / pre-commit)**  
+   `doctor --quick` + `lint --structural-only`  
+   This is the deterministic merge gate and should be the only blocking quality gate.
+
+2. **Manual pre-merge check (recommended, not blocker)**  
+   `doctor --full`  
+   This extends the quick gate with runtime, WSL/Codex, and hook-smoke coverage.
+
+3. **Advisory knowledge review (non-blocker)**  
+   `lint --full`  
+   This adds the expensive contradiction review. Its results are non-deterministic and
+   must not be used as a merge gate.
+
+`wiki_cli.py doctor` should default to `--quick` when no mode is passed, so the
+main CLI stays convenient for everyday smoke checks.
+`wiki_cli.py lint` should default to `--structural-only`, while `wiki_cli.py lint --full`
+should remain the explicit expensive advisory route that includes contradiction checks and
+uses the project dependency environment.
+When `lint --full` runs from WSL, the contradiction check may delegate to the
+Windows `uv` runtime to keep results aligned with the primary project setup.
 
 Reports saved to `reports/lint-YYYY-MM-DD.md`.
 
 ## Auto-Capture (hooks)
 
-Three Claude Code hooks capture knowledge automatically from every session:
+Six Claude Code hooks support the knowledge system overall. Three of them are
+the core automatic capture hooks that write new session knowledge into `daily/`,
+while the others handle reactive inject, micro-capture, and save reminders:
 
-| Hook               | When              | What it does                                        |
-| ------------------ | ----------------- | --------------------------------------------------- |
-| `session-start.py` | Session begins    | Injects wiki index + recent daily log as context    |
-| `session-end.py`   | Session ends      | Extracts transcript → spawns flush.py in background |
-| `pre-compact.py`   | Before compaction | Same as session-end but with 5-turn minimum         |
+| Hook                   | When              | What it does                                              |
+| ---------------------- | ----------------- | --------------------------------------------------------- |
+| `session-start.py`     | Session begins    | Injects wiki index + recent daily log as context          |
+| `session-end.py`       | Session ends      | Extracts transcript → spawns flush.py in background       |
+| `pre-compact.py`       | Before compaction | Same as session-end but with 5-turn minimum               |
+| `user-prompt-wiki.py`  | Before each prompt| Injects top relevant wiki articles for the current prompt |
+| `post-tool-capture.py` | After Bash/tool   | Captures git/test micro-events into the daily log         |
+| `stop-wiki-reminder.py`| After each answer | Reminds about `/wiki-save` for important decisions        |
+
+`session-end.py`, `pre-compact.py`, and `post-tool-capture.py` are the three
+hooks dedicated to automatic knowledge capture. The other hooks keep that
+knowledge loop useful during active work.
 
 `flush.py` uses Claude Agent SDK to evaluate whether the conversation contained valuable knowledge. If yes, it appends a structured summary to `daily/YYYY-MM-DD.md`.
+
+When hooks spawn `flush.py` or `compile.py` in the background, keep those subprocesses
+on the project `uv run --directory <repo>` path so `claude_agent_sdk` and the project
+dependency environment stay consistent across Windows and WSL.
 
 After 18:00, flush.py auto-triggers `compile.py` to process the day's logs into wiki articles.
 
@@ -162,8 +224,14 @@ uv run python scripts/compile.py --all
 # Preview what would be compiled
 uv run python scripts/compile.py --dry-run
 
+# Show staging-style summary for one file without writing
+uv run python scripts/compile.py --file daily/2026-04-10.md --dry-run
+
 # Query the knowledge base
 uv run python scripts/query.py "your question here"
+
+# Preview likely articles without starting Agent SDK
+uv run python scripts/query.py "your question here" --preview
 
 # Query and file the answer as a Q&A article
 uv run python scripts/query.py "your question" --file-back
@@ -189,10 +257,16 @@ uv run python scripts/seed.py "path/to/project" --dry-run
 uv run python scripts/seed.py "path/to/project" --project-name myproject
 
 # Wiki CLI (unified interface)
+uv run python scripts/wiki_cli.py doctor
+uv run python scripts/wiki_cli.py doctor --full
 uv run python scripts/wiki_cli.py status
+uv run python scripts/wiki_cli.py doctor --quick
+uv run python scripts/wiki_cli.py doctor --full
 uv run python scripts/wiki_cli.py compile
 uv run python scripts/wiki_cli.py query "question"
+uv run python scripts/wiki_cli.py query "question" --preview
 uv run python scripts/wiki_cli.py lint
+uv run python scripts/wiki_cli.py lint --full
 uv run python scripts/wiki_cli.py rebuild
 uv run python scripts/wiki_cli.py seed "path/to/project"
 ```

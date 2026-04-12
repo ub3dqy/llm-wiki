@@ -25,6 +25,8 @@ This project extends both sources with significant improvements:
 | Recent changes | None | **Recent Wiki Changes (48h)** section in SessionStart |
 | Agent SDK retry | None | **Retry on timeout** with exponential backoff |
 | State management | Unbounded growth | **Pruning** (max 50 sessions in state) |
+| Provenance | `sources` only | **`confidence` labels + `## Provenance`** for compile-generated articles |
+| Query confidence | None | **Query preview + provenance-aware answer guidance** |
 
 ## How it works
 
@@ -119,15 +121,61 @@ Windows `.venv` is never rewritten by Linux.
 codex_hooks = true
 ```
 
-2. Create `~/.codex/AGENTS.md` with the global wiki-first instructions.
+2. Keep Codex inside WSL and open the repo from WSL (not native Windows mode).
 3. Copy [`codex-hooks.template.json`](codex-hooks.template.json) to `~/.codex/hooks.json`.
-4. Keep the hook commands WSL-safe inside WSL:
+4. Replace only the repo path placeholder:
 
-```bash
-UV_PROJECT_ENVIRONMENT=/root/.cache/llm-wiki/.venv UV_LINK_MODE=copy uv run --directory "/path/to/llm-wiki" python hooks/codex/session-start.py
+```text
+/path/to/llm-wiki -> /your/actual/wsl/path/to/llm-wiki
 ```
 
-5. Start Codex from WSL and verify that the SessionStart hook injects wiki context.
+Do **not** replace `$HOME`. The template already resolves the current Linux user home automatically.
+
+5. Keep the hook commands WSL-safe inside WSL:
+
+```bash
+bash -lc 'source "$HOME/.local/bin/env" 2>/dev/null; UV_BIN="${UV_BIN:-$(command -v uv)}"; if test -z "$UV_BIN"; then echo "uv not found; install uv in WSL and ensure it is on PATH" >&2; exit 1; fi; UV_PROJECT_ENVIRONMENT="$HOME/.cache/llm-wiki/.venv" UV_LINK_MODE=copy "$UV_BIN" run --directory "/path/to/llm-wiki" python hooks/codex/session-start.py'
+```
+
+The template is intentionally fail-loud now: if `uv` is missing in WSL, the hook should error
+clearly instead of silently pretending everything is fine.
+
+6. Run the doctor and smoke checks from WSL:
+
+```bash
+python scripts/doctor.py --quick
+python scripts/doctor.py --full
+uv run python scripts/wiki_cli.py doctor
+uv run python scripts/wiki_cli.py doctor --quick
+uv run python scripts/wiki_cli.py doctor --full
+uv run python scripts/wiki_cli.py status
+uv run python scripts/rebuild_index.py --check
+```
+
+`doctor.py --quick` is for fast daily checks. `doctor.py --full` runs the full gate, including WSL/Codex runtime checks and hook smokes. The same modes are now available through `wiki_cli.py doctor`, and `wiki_cli.py doctor` without flags defaults to the quick mode.
+
+### Gate roles
+
+Keep these three roles separate:
+
+1. **Required gate (CI / pre-commit)**  
+   `python scripts/doctor.py --quick` and `python scripts/wiki_cli.py lint`  
+   This is the deterministic baseline and should be the only blocking merge gate.
+
+2. **Manual pre-merge check (recommended, not blocker)**  
+   `python scripts/doctor.py --full`  
+   This extends the quick gate with runtime, WSL/Codex, and hook-smoke coverage.
+
+3. **Advisory knowledge review (non-blocker)**  
+   `python scripts/wiki_cli.py lint --full`  
+   This includes the expensive contradiction review. Its findings are non-deterministic
+   and must not be used as a merge gate.
+
+7. Start Codex from WSL and verify that the SessionStart hook injects wiki context.
+
+### Repo-level instructions for Codex
+
+This repository now ships with [`AGENTS.md`](AGENTS.md). Codex can use it as project-level guidance, while the full wiki schema remains in [`CLAUDE.md`](CLAUDE.md).
 
 ## Usage
 
@@ -138,6 +186,7 @@ Just use Claude Code normally. The hooks will:
 2. Inject relevant articles when you ask questions
 3. Capture knowledge when sessions end
 4. Auto-compile daily logs into wiki articles after 18:00
+5. Mark compile-generated knowledge with explicit provenance and confidence
 
 ### Manual commands
 
@@ -145,14 +194,23 @@ Just use Claude Code normally. The hooks will:
 # Show wiki status
 uv run python scripts/wiki_cli.py status
 
+# Run doctor checks
+uv run python scripts/wiki_cli.py doctor
+uv run python scripts/wiki_cli.py doctor --quick
+uv run python scripts/wiki_cli.py doctor --full
+
 # Compile daily logs into wiki articles
 uv run python scripts/wiki_cli.py compile
 
 # Query the knowledge base
 uv run python scripts/wiki_cli.py query "how does auth work?"
 
+# Preview likely articles without spending an Agent SDK turn
+uv run python scripts/wiki_cli.py query "how does auth work?" --preview
+
 # Run health checks
 uv run python scripts/wiki_cli.py lint
+uv run python scripts/wiki_cli.py lint --full
 
 # Rebuild index with project tags and word counts
 uv run python scripts/wiki_cli.py rebuild
@@ -193,7 +251,7 @@ Instantly creates or updates a wiki article from the current conversation. Works
 │   ├── flush.py               # Evaluate + save conversation insights
 │   ├── compile.py             # Compile daily/ → wiki/ articles
 │   ├── query.py               # Search the knowledge base
-│   ├── lint.py                # 7 health checks
+│   ├── lint.py                # Structural + provenance health checks
 │   ├── rebuild_index.py       # Enrich index with metadata
 │   ├── seed.py                # Bootstrap wiki from project files
 │   └── wiki_cli.py            # Unified CLI interface
@@ -239,6 +297,10 @@ The wiki lives in its own git repo, not inside any project. This allows:
 
 The `flush.py` script uses Claude Agent SDK to evaluate whether a conversation contains valuable knowledge. This is intentional — only an LLM can judge if "we discussed the weather" is worth saving vs "we decided to use BullMQ for async task processing."
 
+Keep the background chain (`session-end.py` / `pre-compact.py` → `flush.py` → `compile.py`)
+on `uv run --directory <repo>` so the Agent SDK and project dependencies always come from the
+wiki runtime, not from whichever shell interpreter happened to launch the hook.
+
 Agent SDK uses your existing Claude subscription (Max/Team/Enterprise) — no separate API costs.
 
 ### Concurrency control
@@ -265,9 +327,10 @@ Without limits, closing multiple sessions simultaneously spawns hundreds of node
 # protocol schemas, NOT hook payload schemas
 
 # 2. Compare payload fields against hook scripts
-# Check: session-start.py, stop.py, user-prompt-wiki.py, post-tool-capture.py
+# Check: hooks/codex/session-start.py, stop.py, user-prompt-wiki.py, post-tool-capture.py
 
-# 3. Run smoke tests with full payloads (see docs/codex-integration-plan.md)
+# 3. Run doctor and smoke tests from WSL
+python scripts/doctor.py
 
 # 4. Verify feature flag is still active
 codex features list
@@ -287,6 +350,13 @@ uv run python scripts/wiki_cli.py lint
 # 3. Test SessionStart output
 echo '{}' | uv run python hooks/session-start.py | python -c "import sys,json; print(len(json.load(sys.stdin)['hookSpecificOutput']['additionalContext']), 'chars')"
 ```
+
+`wiki_cli.py lint` without flags now defaults to the cheap structural route. Use
+`wiki_cli.py lint --full` only when you explicitly want the contradiction review.
+That route is advisory, not blocking. The full route uses the project dependency
+environment so Agent SDK checks can run even if your current shell Python is
+lightweight. In WSL, the contradiction step may delegate to the Windows `uv`
+runtime to keep the result consistent with the main project environment.
 
 ## Credits
 
