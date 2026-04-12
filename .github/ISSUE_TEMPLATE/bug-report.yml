@@ -1,0 +1,43 @@
+name: Bug report
+description: Report broken behavior in hooks, scripts, CLI flows, or documentation.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        Please include enough detail for someone else to reproduce the issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Paste commands, prompts, or setup steps.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Claude Code or Codex, WSL/native, Python version, and anything else relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant output. Remove secrets and personal paths before posting.
+    validations:
+      required: false

@@ -1,0 +1,33 @@
+name: Installation or onboarding problem
+description: Get help with setup, first-run bootstrap, or hook wiring.
+title: "[install] "
+labels:
+  - installation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please try:
+        - `uv run python scripts/setup.py`
+        - `uv run python scripts/doctor.py --quick`
+  - type: textarea
+    id: setup
+    attributes:
+      label: What step are you stuck on?
+      description: Tell us what command or setup step failed.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: Paste the exact command and output. Remove secrets and personal paths.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, shell, WSL/native, Python version, Claude Code/Codex setup.
+    validations:
+      required: true

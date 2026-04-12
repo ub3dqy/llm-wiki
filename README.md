@@ -6,6 +6,52 @@ Built on two foundations:
 - [**Karpathy's LLM Wiki**](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the three-layer architecture pattern (raw sources → daily logs → wiki articles)
 - [**coleam00/claude-memory-compiler**](https://github.com/coleam00/claude-memory-compiler) — auto-capture via Claude Code hooks + Agent SDK compilation
 
+## Who this is for
+
+This repository is for people who want:
+
+- durable memory across Claude Code and Codex sessions
+- a structured markdown knowledge base instead of ad hoc notes
+- automatic capture of reusable implementation knowledge
+- a repo they can fork and adapt to their own workflows
+
+If that sounds like your setup, the quickest path is:
+
+1. clone the repo
+2. run `uv sync`
+3. run `uv run python scripts/setup.py`
+4. run `uv run python scripts/doctor.py --quick`
+
+## Community and feedback
+
+If you use this project in real work, please share that back with the repo.
+
+- Bugs: open a bug report in GitHub Issues
+- Setup trouble: open the installation/onboarding form
+- Ideas: open a feature request
+- Workflow examples and questions: use GitHub Discussions when enabled
+
+The repository also ships with:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SUPPORT.md](SUPPORT.md)
+- [SECURITY.md](SECURITY.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+## Maintainer checklist for GitHub
+
+To make the public repository discoverable and active instead of passive, enable and fill in these GitHub settings:
+
+1. About section:
+   - short description
+   - homepage/demo/docs link
+   - topics such as `claude-code`, `codex`, `llm-memory`, `agent-memory`, `knowledge-base`
+2. Social preview image
+3. GitHub Discussions
+4. Private vulnerability reporting
+5. Labels such as `bug`, `documentation`, `installation`, `feedback`, `enhancement`, `good first issue`, `help wanted`
+6. Releases with changelog notes
+
 ## What makes this different
 
 This project extends both sources with significant improvements:

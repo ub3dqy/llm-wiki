@@ -1,0 +1,25 @@
+name: Use case or feedback
+description: Share how you use the project, where it helps, or where it falls short.
+title: "[use-case] "
+labels:
+  - feedback
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Your workflow
+      description: Tell us what you are using the project for.
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: What worked well?
+    validations:
+      required: false
+  - type: textarea
+    id: gaps
+    attributes:
+      label: What was confusing or missing?
+    validations:
+      required: false

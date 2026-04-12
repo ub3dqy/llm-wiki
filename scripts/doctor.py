@@ -366,10 +366,10 @@ def check_path_normalization() -> CheckResult:
     from hook_utils import infer_project_name_from_cwd  # noqa: WPS433
 
     cases = {
-        r"D:\workspace\example-project": "example-project",
-        "/mnt/d/workspace/example-project": "example-project",
-        "/d/workspace/example-project": "example-project",
-        r"D:\workspace\example-project-b": "example-project-b",
+        r"D:\workspace\example\example-project": "example-project",
+        "/mnt/d/workspace/example/example-project": "example-project",
+        "/d/workspace/example/example-project": "example-project",
+        r"D:\workspace\example\example-other": "example-other",
     }
 
     failures: list[str] = []
