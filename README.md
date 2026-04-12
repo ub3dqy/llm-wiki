@@ -74,7 +74,7 @@ If you use this project in real work, please share that back with the repo.
 - Bugs: open a bug report in GitHub Issues
 - Setup trouble: open the installation/onboarding form
 - Ideas: open a feature request
-- Workflow examples and questions: use GitHub Discussions when enabled
+- Workflow examples and questions: use GitHub Discussions (or the "use case" issue form if Discussions are not active in this repo)
 
 The repository also ships with:
 
@@ -259,8 +259,8 @@ clearly instead of silently pretending everything is fine.
 6. Run the doctor and smoke checks from WSL:
 
 ```bash
-python scripts/doctor.py --quick
-python scripts/doctor.py --full
+uv run python scripts/doctor.py --quick
+uv run python scripts/doctor.py --full
 uv run python scripts/wiki_cli.py doctor
 uv run python scripts/wiki_cli.py doctor --quick
 uv run python scripts/wiki_cli.py doctor --full
@@ -275,11 +275,11 @@ uv run python scripts/rebuild_index.py --check
 Keep these three roles separate:
 
 1. **Required gate (CI / pre-commit)**  
-   `python scripts/doctor.py --quick` and `python scripts/wiki_cli.py lint`  
+   `uv run python scripts/doctor.py --quick` and `uv run python scripts/wiki_cli.py lint`  
    This is the deterministic baseline and should be the only blocking merge gate.
 
 2. **Manual pre-merge check (recommended, not blocker)**  
-   `python scripts/doctor.py --full`  
+   `uv run python scripts/doctor.py --full`  
    Extends the quick gate with runtime checks, hook smokes, and an
    **end-to-end roundtrip test** that simulates SessionEnd with a dummy
    transcript and verifies the full `session-end -> flush.py` chain runs
@@ -287,7 +287,7 @@ Keep these three roles separate:
    that touches the hook pipeline.
 
 3. **Advisory knowledge review (non-blocker)**  
-   `python scripts/wiki_cli.py lint --full`  
+   `uv run python scripts/wiki_cli.py lint --full`  
    This includes the expensive contradiction review. Its findings are non-deterministic
    and must not be used as a merge gate.
 
@@ -469,7 +469,7 @@ Without limits, closing multiple sessions simultaneously spawns hundreds of node
 # Check: hooks/codex/session-start.py, stop.py, user-prompt-wiki.py, post-tool-capture.py
 
 # 3. Run doctor and smoke tests from WSL
-python scripts/doctor.py
+uv run python scripts/doctor.py --full
 
 # 4. Verify feature flag is still active
 codex features list
