@@ -43,26 +43,29 @@ Then follow the `Next steps` printed by `setup.py` to wire hooks into `~/.claude
 
 ## Compared to alternatives
 
-| | **This project** | [coleam00/claude-memory-compiler](https://github.com/coleam00/claude-memory-compiler) | Plain `CLAUDE.md` | Vector memory (mem0, Letta) |
+The Claude Code memory space grew quickly through 2025–2026. Here is where this project sits against the most relevant alternatives:
+
+| | **This project** | [claude-mem](https://github.com/thedotmack/claude-mem) | [coleam00/claude-memory-compiler](https://github.com/coleam00/claude-memory-compiler) | Plain `CLAUDE.md` |
 |---|:---:|:---:|:---:|:---:|
-| Auto-capture from sessions | ✅ | ✅ | ❌ | ✅ |
-| Works with Codex CLI | ✅ | ❌ | ➖ | ➖ |
-| Per-prompt targeted retrieval | ✅ | ❌ (full dump) | ❌ (static) | ✅ |
-| Content-based capture threshold | ✅ | ❌ (turn-based) | — | varies |
-| Provenance labels (`confidence`, sources) | ✅ | ❌ | ❌ | varies |
-| End-to-end acceptance test | ✅ | ❌ | — | — |
-| One-command bootstrap (`setup.py`) | ✅ | ❌ | n/a | varies |
-| Zero infrastructure (no vector DB) | ✅ | ✅ | ✅ | ❌ |
-| Plain markdown + git + Obsidian | ✅ | ✅ | ✅ | ❌ |
-| Typical setup cost | **~2 min** | ~10 min | seconds | 30+ min |
+| Auto-capture from sessions | ✅ | ✅ | ✅ | ❌ |
+| Works with Claude Code | ✅ | ✅ | ✅ | ✅ |
+| Works with Codex CLI | ✅ | ❌ | ❌ | ➖ |
+| Per-prompt targeted retrieval | ✅ (keyword) | ✅ (vector) | ❌ (full dump) | ❌ (static) |
+| Plain markdown storage | ✅ | ❌ | ✅ | ✅ |
+| Git-committable knowledge base | ✅ | ❌ | ✅ | ✅ |
+| Obsidian graph browsing | ✅ | ❌ | ✅ | ✅ |
+| Zero infrastructure (no vector DB) | ✅ | ❌ | ✅ | ✅ |
+| Installation | 4 commands | plugin install | manual hook setup | create file |
 
-**Legend:** ✅ first-class · ❌ not available · ➖ partial / unofficial · — not applicable · *varies* = implementation-dependent
+**Legend:** ✅ first-class · ❌ not available · ➖ partial / unofficial
 
-**Against the two direct ancestors:** this fork adds Codex CLI support, content-based capture thresholds, provenance tracking, an end-to-end acceptance test, a bootstrap script, and project-aware context injection on top of `coleam00`. See [What makes this different](#what-makes-this-different) below for the full row-by-row comparison.
+**vs [`claude-mem`](https://github.com/thedotmack/claude-mem)** — claude-mem is the most-starred Claude Code memory plugin and is a great fit if you want semantic similarity search backed by Chroma and SQLite. This project takes the opposite trade-off: keyword retrieval over plain markdown, no vector database to set up, and the entire knowledge base living as `.md` files you can read, edit, and `git blame`. Pick `claude-mem` if you want vector search across a large corpus. Pick this project if you want git history, Obsidian graph browsing, Codex CLI support, and zero infrastructure.
 
-**Against vector memory:** this project stays markdown-only — the right trade-off when your knowledge base is under ~2000 articles and you value git history, Obsidian graph browsing, and zero-infrastructure setup over pure similarity search.
+**vs direct ancestors (`coleam00`, Karpathy)** — this fork adds Codex CLI support, content-based capture thresholds, provenance tracking, an end-to-end acceptance test in `doctor --full`, a bootstrap script, and project-aware context injection on top of `coleam00`. See [What makes this different](#what-makes-this-different) below for the full row-by-row comparison against the direct ancestor.
 
-**Against plain `CLAUDE.md`:** static files work for stable facts ("we use TypeScript, not JavaScript"), but can't capture the *reasoning* from a debugging session or the *outcome* of yesterday's architectural discussion. This project is what you reach for when one `CLAUDE.md` per project stops scaling.
+**vs vector-memory libraries (`mem0`, Letta, etc.)** — same trade-off as `claude-mem`: those tools are vector-first with embedding pipelines and their own storage backends. This project is markdown-first and stops being the right choice above ~2000 articles, where vector similarity starts to outperform keyword retrieval.
+
+**vs plain `CLAUDE.md`** — static files work for stable facts ("we use TypeScript, not JavaScript"), but can't capture the *reasoning* from a debugging session or the *outcome* of yesterday's architectural discussion. This project is what you reach for when one `CLAUDE.md` per project stops scaling.
 
 ## Community and feedback
 
