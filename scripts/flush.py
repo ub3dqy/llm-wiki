@@ -32,6 +32,7 @@ DAILY_DIR = ROOT_DIR / "daily"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 STATE_FILE = SCRIPTS_DIR / "state.json"
 LOCK_DIR = SCRIPTS_DIR / "locks"
+TEST_MARKER_FILE = SCRIPTS_DIR / "flush-test-marker.txt"
 MAX_CONCURRENT_FLUSH = 2
 LOCK_TIMEOUT_SEC = 120  # stale lock cleanup after 2 minutes
 
@@ -290,6 +291,19 @@ def main() -> None:
     context_file = Path(sys.argv[1])
     session_id = sys.argv[2]
     project_name = sys.argv[3] if len(sys.argv) > 3 else "unknown"
+
+    if os.environ.get("WIKI_FLUSH_TEST_MODE") == "1":
+        logging.info("flush.py running in TEST MODE for session %s", session_id)
+        try:
+            TEST_MARKER_FILE.write_text(
+                "FLUSH_TEST_OK session="
+                f"{session_id}\n"
+                f"ts={datetime.now(WIKI_TIMEZONE).isoformat(timespec='seconds')}\n",
+                encoding="utf-8",
+            )
+        finally:
+            context_file.unlink(missing_ok=True)
+        return
 
     if not context_file.exists():
         logging.error("Context file not found: %s", context_file)

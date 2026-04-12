@@ -11,7 +11,10 @@ import os
 import shutil
 import subprocess
 import sys
+import time
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -24,6 +27,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 HOOKS_DIR = ROOT_DIR / "hooks" / "codex"
 WIKI_DIR = ROOT_DIR / "wiki"
 INDEX_FILE = ROOT_DIR / "index.md"
+SCRIPTS_DIR = ROOT_DIR / "scripts"
+FLUSH_LOG = SCRIPTS_DIR / "flush.log"
+CAPTURE_HEALTH_WINDOW_DAYS = 7
 from runtime_utils import find_uv, is_wsl
 
 
@@ -83,6 +89,83 @@ def check_env_settings() -> CheckResult:
         return CheckResult("env_settings", True, detail)
     except Exception as exc:  # noqa: BLE001
         return CheckResult("env_settings", False, f"Failed to load settings: {exc}")
+
+
+def check_flush_capture_health() -> CheckResult:
+    if not FLUSH_LOG.exists():
+        return CheckResult(
+            "flush_capture_health",
+            True,
+            "No flush.log yet (fresh install). Will populate after first SessionEnd.",
+        )
+
+    cutoff = datetime.now() - timedelta(days=CAPTURE_HEALTH_WINDOW_DAYS)
+    session_fired = 0
+    spawned = 0
+
+    try:
+        text = FLUSH_LOG.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return CheckResult("flush_capture_health", False, f"Could not read flush.log: {exc}")
+
+    for line in text.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+        try:
+            ts = datetime.strptime(f"{parts[0]} {parts[1]}", "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        if ts < cutoff:
+            continue
+
+        tail = parts[3]
+        if "[session-end]" not in tail and "[pre-compact]" not in tail:
+            continue
+        if "SessionEnd fired" in tail or "PreCompact fired" in tail:
+            session_fired += 1
+        elif "Spawned flush.py" in tail:
+            spawned += 1
+
+    if session_fired == 0:
+        return CheckResult(
+            "flush_capture_health",
+            True,
+            f"No SessionEnd/PreCompact events in last {CAPTURE_HEALTH_WINDOW_DAYS} days (possibly idle)",
+        )
+
+    skip_rate = 1.0 - (spawned / session_fired)
+    detail = (
+        f"Last {CAPTURE_HEALTH_WINDOW_DAYS}d: {spawned}/{session_fired} flushes spawned "
+        f"(skip rate {skip_rate:.0%})"
+    )
+
+    # FAIL only when the pipeline is observably broken: many SessionEnds fired
+    # but zero flushes actually spawned. A high skip rate on its own is an
+    # observability signal, not a correctness failure — it reflects historical
+    # usage (lots of short sessions under WIKI_MIN_FLUSH_CHARS), and blocking
+    # the merge gate on historical data would be wrong because it cannot be
+    # fixed by changing the current code.
+    if spawned == 0:
+        return CheckResult(
+            "flush_capture_health",
+            False,
+            f"{detail}. Pipeline appears broken: SessionEnds fired but nothing was spawned.",
+        )
+
+    if skip_rate > 0.5:
+        return CheckResult(
+            "flush_capture_health",
+            True,
+            f"{detail} [attention: high skip rate — consider lowering WIKI_MIN_FLUSH_CHARS]",
+        )
+    if skip_rate > 0.3:
+        return CheckResult(
+            "flush_capture_health",
+            True,
+            f"{detail} [info: moderate skip rate]",
+        )
+    return CheckResult("flush_capture_health", True, detail)
 
 def check_python() -> CheckResult:
     version = sys.version_info
@@ -261,6 +344,82 @@ def check_stop_smoke() -> CheckResult:
     return CheckResult("stop_smoke", True, "Stop hook exited safely")
 
 
+def check_flush_roundtrip() -> CheckResult:
+    test_session_id = f"doctor-roundtrip-{uuid.uuid4().hex[:8]}"
+    transcript_path = SCRIPTS_DIR / f"doctor-transcript-{test_session_id}.jsonl"
+    marker_path = SCRIPTS_DIR / "flush-test-marker.txt"
+    long_body = "This is a doctor roundtrip acceptance test. " * 60
+    turns: list[str] = []
+
+    for idx in range(6):
+        role = "user" if idx % 2 == 0 else "assistant"
+        turns.append(json.dumps({"message": {"role": role, "content": long_body}}))
+
+    transcript_path.write_text("\n".join(turns) + "\n", encoding="utf-8")
+    marker_path.unlink(missing_ok=True)
+
+    hook_input = {
+        "session_id": test_session_id,
+        "source": "doctor-roundtrip",
+        "transcript_path": str(transcript_path),
+        "cwd": str(ROOT_DIR),
+    }
+
+    env = os.environ.copy()
+    env["WIKI_FLUSH_TEST_MODE"] = "1"
+    env.pop("CLAUDE_INVOKED_BY", None)
+
+    session_end_script = ROOT_DIR / "hooks" / "session-end.py"
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(session_end_script)],
+            input=json.dumps(hook_input),
+            text=True,
+            capture_output=True,
+            env=env,
+            cwd=str(ROOT_DIR),
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        transcript_path.unlink(missing_ok=True)
+        return CheckResult("flush_roundtrip", False, "session-end.py timed out after 20s")
+    except Exception as exc:  # noqa: BLE001
+        transcript_path.unlink(missing_ok=True)
+        return CheckResult("flush_roundtrip", False, f"Failed to invoke session-end.py: {exc}")
+    finally:
+        transcript_path.unlink(missing_ok=True)
+
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip()[:200]
+        return CheckResult(
+            "flush_roundtrip",
+            False,
+            f"session-end.py exited {proc.returncode}: {stderr}",
+        )
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        if marker_path.exists():
+            try:
+                marker_content = marker_path.read_text(encoding="utf-8").strip()
+            finally:
+                marker_path.unlink(missing_ok=True)
+            if test_session_id in marker_content:
+                return CheckResult(
+                    "flush_roundtrip",
+                    True,
+                    "session-end -> flush.py chain completed in test mode",
+                )
+            return CheckResult(
+                "flush_roundtrip",
+                False,
+                f"Marker written for wrong session: {marker_content[:100]}",
+            )
+        time.sleep(0.3)
+
+    return CheckResult("flush_roundtrip", False, "flush.py did not write test marker within 15s")
+
+
 def check_index_health() -> CheckResult:
     ok, output = run_script_check("rebuild_index.py", ["--check"])
     if not ok:
@@ -431,6 +590,7 @@ def get_quick_checks() -> list[CheckResult]:
     return [
         check_wiki_structure(),
         check_env_settings(),
+        check_flush_capture_health(),
         check_python(),
         check_uv(),
         check_index_health(),
@@ -448,6 +608,7 @@ def get_full_checks() -> list[CheckResult]:
     return [
         check_wiki_structure(),
         check_env_settings(),
+        check_flush_capture_health(),
         check_python(),
         check_uv(),
         check_runtime_mode(),
@@ -464,6 +625,7 @@ def get_full_checks() -> list[CheckResult]:
         check_session_start_smoke(),
         check_user_prompt_smoke(),
         check_stop_smoke(),
+        check_flush_roundtrip(),
     ]
 
 def parse_args() -> argparse.Namespace:

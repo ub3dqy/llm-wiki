@@ -158,6 +158,7 @@ preferences. Supported keys:
 | `WIKI_COMPILE_AFTER_HOUR` | `18` | Hour (0-23) after which `flush.py` auto-triggers `compile.py`. |
 | `WIKI_MAX_TURNS` | `30` | Max transcript turns captured for flush processing. |
 | `WIKI_MAX_CONTEXT_CHARS` | `15000` | Max characters captured from a transcript. |
+| `WIKI_MIN_FLUSH_CHARS` | `500` | Min characters of meaningful context before `flush.py` runs. Sessions below this threshold are skipped. |
 | `WIKI_DEBOUNCE_SEC` | `10` | Debounce window for cascading hooks. |
 
 Unset keys fall back to defaults. Invalid values print a `[config] warning`
@@ -234,7 +235,11 @@ Keep these three roles separate:
 
 2. **Manual pre-merge check (recommended, not blocker)**  
    `python scripts/doctor.py --full`  
-   This extends the quick gate with runtime, WSL/Codex, and hook-smoke coverage.
+   Extends the quick gate with runtime checks, hook smokes, and an
+   **end-to-end roundtrip test** that simulates SessionEnd with a dummy
+   transcript and verifies the full `session-end -> flush.py` chain runs
+   in test mode. Takes a few seconds. Should be run before any merge
+   that touches the hook pipeline.
 
 3. **Advisory knowledge review (non-blocker)**  
    `python scripts/wiki_cli.py lint --full`  

@@ -115,6 +115,7 @@ WIKI_COMPILE_AFTER_HOUR: int = _env_int("WIKI_COMPILE_AFTER_HOUR", 18, min_val=0
 WIKI_MAX_TURNS: int = _env_int("WIKI_MAX_TURNS", 30, min_val=1)
 WIKI_MAX_CONTEXT_CHARS: int = _env_int("WIKI_MAX_CONTEXT_CHARS", 15_000, min_val=500)
 WIKI_DEBOUNCE_SEC: int = _env_int("WIKI_DEBOUNCE_SEC", 10, min_val=0)
+WIKI_MIN_FLUSH_CHARS: int = _env_int("WIKI_MIN_FLUSH_CHARS", 500, min_val=0)
 
 
 def now_iso() -> str:

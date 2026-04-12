@@ -21,7 +21,12 @@ if os.environ.get("CLAUDE_INVOKED_BY"):
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
-from config import WIKI_MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS, WIKI_MAX_TURNS as MAX_TURNS, WIKI_TIMEZONE  # noqa: E402
+from config import (  # noqa: E402
+    WIKI_MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS,
+    WIKI_MAX_TURNS as MAX_TURNS,
+    WIKI_MIN_FLUSH_CHARS,
+    WIKI_TIMEZONE,
+)
 
 # Import shared extraction logic
 sys.path.insert(0, str(ROOT / "hooks"))
@@ -41,7 +46,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-MIN_TURNS_TO_FLUSH = 4
 DEBOUNCE_FILE = SCRIPTS_DIR / ".last-flush-spawn"
 
 
@@ -85,8 +89,9 @@ def main() -> None:
         logging.info("SKIP: empty context")
         return
 
-    if turn_count < MIN_TURNS_TO_FLUSH:
-        logging.info("SKIP: only %d turns (min %d)", turn_count, MIN_TURNS_TO_FLUSH)
+    content_len = len(context.strip())
+    if content_len < WIKI_MIN_FLUSH_CHARS:
+        logging.info("SKIP: only %d chars (min %d)", content_len, WIKI_MIN_FLUSH_CHARS)
         return
 
     # Derive project name from cwd
