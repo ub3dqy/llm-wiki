@@ -1,8 +1,11 @@
-"""Lint: run 7 health checks on the knowledge base."""
+"""Lint: run health checks on the knowledge base."""
 from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,20 +13,51 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import REPORTS_DIR, WIKI_DIR, now_iso, today_iso
+from runtime_utils import find_uv, is_wsl
 from utils import (
+    content_has_wikilink_target,
     count_inbound_links,
     extract_wikilinks,
     file_hash,
+    frontmatter_sources_include_prefix,
     get_article_word_count,
     list_daily_logs,
     list_wiki_articles,
     load_state,
+    parse_frontmatter,
     read_all_wiki_content,
     save_state,
     wiki_article_exists,
 )
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+ADVISORY_BANNER = (
+    "[ADVISORY] Contradiction check results are non-deterministic and must not be used as a merge gate."
+)
+
+
+def to_windows_path(path: Path) -> str | None:
+    """Convert /mnt/<drive>/path to Windows form for subprocess delegation."""
+    text = str(path)
+    if len(text) >= 7 and text.startswith("/mnt/") and text[6] == "/":
+        drive = text[5].upper()
+        rest = text[7:].replace("/", "\\")
+        return f"{drive}:\\{rest}"
+    return None
+
+
+def decode_windows_output(data: bytes) -> str:
+    """Decode subprocess output from Windows tooling as robustly as possible."""
+    for encoding in ("utf-8", "cp1251", "cp866"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def has_claude_agent_sdk() -> bool:
+    return importlib.util.find_spec("claude_agent_sdk") is not None
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +151,7 @@ def check_missing_backlinks() -> list[dict]:
             target_path = WIKI_DIR / f"{link}.md"
             if target_path.exists():
                 target_content = target_path.read_text(encoding="utf-8")
-                if f"[[{source_link}]]" not in target_content:
+                if not content_has_wikilink_target(target_content, source_link):
                     issues.append({
                         "severity": "suggestion",
                         "check": "missing_backlink",
@@ -141,6 +175,44 @@ def check_sparse_articles() -> list[dict]:
                 "file": str(rel),
                 "detail": f"Sparse article: {word_count} words (minimum recommended: 200)",
             })
+    return issues
+
+
+def check_provenance_completeness() -> list[dict]:
+    """Check compile-generated articles for confidence and Provenance metadata."""
+    allowed_confidence = {"extracted", "inferred", "to-verify"}
+    issues: list[dict] = []
+
+    for article in list_wiki_articles():
+        fm = parse_frontmatter(article)
+        page_type = fm.get("type", "").strip()
+        sources = fm.get("sources", "")
+        if page_type not in {"concept", "connection"} or not frontmatter_sources_include_prefix(sources, "daily/"):
+            continue
+
+        content = article.read_text(encoding="utf-8")
+        rel = article.relative_to(WIKI_DIR)
+        confidence = fm.get("confidence", "").strip()
+
+        if confidence not in allowed_confidence:
+            issues.append({
+                "severity": "error",
+                "check": "provenance_completeness",
+                "file": str(rel),
+                "detail": (
+                    "Compile-generated article must have confidence: "
+                    "extracted | inferred | to-verify"
+                ),
+            })
+
+        if "\n## Provenance" not in content:
+            issues.append({
+                "severity": "error",
+                "check": "provenance_completeness",
+                "file": str(rel),
+                "detail": "Compile-generated article must include a ## Provenance section",
+            })
+
     return issues
 
 
@@ -192,7 +264,12 @@ Do NOT output anything else — no preamble, no explanation, just the formatted 
                     if hasattr(block, "text"):
                         response += block.text
     except Exception as e:
-        return [{"severity": "error", "check": "contradiction", "file": "(system)", "detail": f"LLM check failed: {e}"}]
+        return [{
+            "severity": "warning",
+            "check": "contradiction",
+            "file": "(system)",
+            "detail": f"LLM contradiction check unavailable in current runtime: {e}",
+        }]
 
     issues: list[dict] = []
     if "NO_ISSUES" not in response:
@@ -207,6 +284,127 @@ Do NOT output anything else — no preamble, no explanation, just the formatted 
                 })
 
     return issues
+
+
+def check_contradictions_portable() -> list[dict]:
+    """Run contradiction check in a deterministic runtime.
+
+    In WSL, delegate the expensive LLM check to the Windows uv runtime so the
+    result stays aligned with the primary project environment.
+    """
+    if not is_wsl():
+        if has_claude_agent_sdk():
+            return asyncio.run(check_contradictions())
+
+        uv_bin = find_uv()
+        if not uv_bin:
+            return [{
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": "claude_agent_sdk unavailable and uv not found for contradiction delegation",
+            }]
+
+        try:
+            proc = subprocess.run(
+                [
+                    uv_bin,
+                    "run",
+                    "--directory",
+                    str(ROOT_DIR),
+                    "python",
+                    str(Path(__file__).resolve()),
+                    "--contradictions-only",
+                    "--json",
+                    "--internal-contradictions-runtime",
+                ],
+                text=True,
+                capture_output=True,
+                cwd=str(ROOT_DIR),
+                timeout=240,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return [{
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"Contradiction delegation via uv failed: {exc}",
+            }]
+
+        if proc.returncode != 0:
+            detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
+            return [{
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"Contradiction runtime via uv failed: {detail}",
+            }]
+
+        try:
+            return json.loads(proc.stdout.strip() or "[]")
+        except json.JSONDecodeError as exc:
+            return [{
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"Invalid contradiction JSON from uv runtime: {exc}",
+            }]
+
+    windows_root = to_windows_path(ROOT_DIR)
+    if not windows_root:
+        return [{
+            "severity": "warning",
+            "check": "contradiction",
+            "file": "(system)",
+            "detail": "WSL contradiction check could not derive a Windows repo path",
+        }]
+
+    ps_script = (
+        "$ErrorActionPreference='Stop'; "
+        "$env:PYTHONIOENCODING='utf-8'; "
+        "$env:PYTHONUTF8='1'; "
+        "$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+        f"Set-Location -LiteralPath '{windows_root}'; "
+        f"uv run --directory '{windows_root}' python 'scripts\\lint.py' --contradictions-only --json"
+    )
+
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", ps_script],
+            text=False,
+            capture_output=True,
+            cwd=str(ROOT_DIR),
+            timeout=240,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return [{
+            "severity": "warning",
+            "check": "contradiction",
+            "file": "(system)",
+            "detail": f"WSL contradiction delegation failed: {exc}",
+        }]
+
+    if proc.returncode != 0:
+        stderr = decode_windows_output(proc.stderr).strip()
+        stdout = decode_windows_output(proc.stdout).strip()
+        detail = stderr or stdout or f"exit {proc.returncode}"
+        return [{
+            "severity": "warning",
+            "check": "contradiction",
+            "file": "(system)",
+            "detail": f"Windows contradiction runtime failed: {detail}",
+        }]
+
+    try:
+        stdout = decode_windows_output(proc.stdout).strip()
+        return json.loads(stdout or "[]")
+    except json.JSONDecodeError as exc:
+        return [{
+            "severity": "warning",
+            "check": "contradiction",
+            "file": "(system)",
+            "detail": f"Invalid contradiction JSON from Windows runtime: {exc}",
+        }]
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +459,36 @@ def main() -> int:
         action="store_true",
         help="Skip LLM-based checks (contradictions) — faster and free",
     )
+    parser.add_argument(
+        "--contradictions-only",
+        action="store_true",
+        help="Run only the contradiction check",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print contradiction issues as JSON (for internal delegation)",
+    )
+    parser.add_argument(
+        "--internal-contradictions-runtime",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
+
+    if args.contradictions_only:
+        if args.internal_contradictions_runtime:
+            issues = asyncio.run(check_contradictions())
+        else:
+            issues = check_contradictions_portable()
+        if args.json:
+            print(json.dumps(issues, ensure_ascii=False))
+        else:
+            print(ADVISORY_BANNER)
+            for issue in issues:
+                print(issue["detail"])
+        errors = sum(1 for i in issues if i["severity"] == "error")
+        return 1 if errors > 0 else 0
 
     print("Running knowledge base lint checks...")
     all_issues: list[dict] = []
@@ -273,6 +500,7 @@ def main() -> int:
         ("Stale articles", check_stale_articles),
         ("Missing backlinks", check_missing_backlinks),
         ("Sparse articles", check_sparse_articles),
+        ("Provenance completeness", check_provenance_completeness),
     ]
 
     for name, check_fn in checks:
@@ -283,7 +511,8 @@ def main() -> int:
 
     if not args.structural_only:
         print("  Checking: Contradictions (LLM)...")
-        issues = asyncio.run(check_contradictions())
+        print(f"  {ADVISORY_BANNER}")
+        issues = check_contradictions_portable()
         all_issues.extend(issues)
         print(f"    Found {len(issues)} issue(s)")
     else:

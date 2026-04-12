@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import INDEX_FILE, now_iso
 from utils import build_article_metadata_map
 
-# Regex to strip previously-added annotations: [project] (Nw) at end of line
-_ANNOTATION_RE = re.compile(r"\s+\[[a-z0-9_, -]+\]\s*\(\d+w\)$")
+# Regex to strip one or more trailing [project] annotations, optionally followed by (Nw)
+_ANNOTATION_RE = re.compile(r"(?:\s+\[[a-z0-9_, -]+\])+\s*(?:\(\d+w\))?$", re.IGNORECASE)
 _ANNOTATION_WORDCOUNT_ONLY_RE = re.compile(r"\s+\(\d+w\)$")
 # Regex to extract wikilink slug from an index line
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)")
@@ -28,6 +28,60 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)")
 _BY_PROJECT_MARKER = "\n## By Project\n"
 MAX_PROJECTS_DETAILED = 15  # projects with full article listings
 
+
+def _article_type_from_slug(slug: str) -> str:
+    """Infer article category from its wiki slug."""
+    if "/" not in slug:
+        return "overview" if slug == "overview" else ""
+    return slug.split("/", 1)[0]
+
+
+def populate_empty_section_placeholders(lines: list[str], meta: dict[str, dict]) -> list[str]:
+    """Normalize Q&A / Analyses sections from metadata.
+
+    This keeps the output idempotent even when blank separator lines or older
+    placeholder text already exist in the source index.
+    """
+    section_to_type = {
+        "## Q&A": "qa",
+        "## Analyses": "analyses",
+    }
+
+    results: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        article_type = section_to_type.get(line.strip())
+        if not article_type:
+            results.append(line)
+            i += 1
+            continue
+
+        results.append(line)
+        results.append("")
+
+        section_lines = [
+            enrich_index_line(f"- [[{slug}]] — {info.get('title', slug)}", meta)
+            for slug, info in sorted(meta.items())
+            if _article_type_from_slug(slug) == article_type
+        ]
+
+        if section_lines:
+            results.extend(section_lines)
+        else:
+            if article_type == "qa":
+                results.append("_Пока нет сохранённых ответов._")
+            elif article_type == "analyses":
+                results.append("_Пока нет сохранённых анализов._")
+
+        i += 1
+        while i < len(lines):
+            stripped = lines[i].strip()
+            if stripped.startswith("## ") and stripped not in section_to_type:
+                break
+            i += 1
+
+    return results
 
 
 def strip_existing_annotations(line: str) -> str:
@@ -129,6 +183,7 @@ def rebuild_index() -> str:
 
     # Enrich individual lines
     lines = original.splitlines()
+    lines = populate_empty_section_placeholders(lines, meta)
     enriched = [enrich_index_line(line, meta) for line in lines]
 
     # Build By Project section

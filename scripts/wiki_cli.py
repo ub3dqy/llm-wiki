@@ -2,15 +2,20 @@
 
 Usage:
     uv run python scripts/wiki_cli.py status            # show wiki statistics
+    uv run python scripts/wiki_cli.py doctor            # run doctor quick checks
+    uv run python scripts/wiki_cli.py doctor --full     # run full doctor gate
     uv run python scripts/wiki_cli.py compile [--all]    # compile daily logs
     uv run python scripts/wiki_cli.py query "question"   # query the wiki
-    uv run python scripts/wiki_cli.py lint [--fix]       # run health checks
+    uv run python scripts/wiki_cli.py query "question" --preview
+    uv run python scripts/wiki_cli.py lint               # run structural lint checks
+    uv run python scripts/wiki_cli.py lint --full        # run full lint checks
     uv run python scripts/wiki_cli.py rebuild            # rebuild index
     uv run python scripts/wiki_cli.py seed <path>        # seed from project
 """
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,9 +24,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import DAILY_DIR, REPORTS_DIR, WIKI_DIR, ROOT_DIR, STATE_FILE
+from runtime_utils import find_uv
 from utils import list_daily_logs, list_wiki_articles, build_article_metadata_map
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
+
+def get_last_compile_marker(state: dict) -> str:
+    """Return the most recent real compile timestamp from state."""
+    ingested = state.get("ingested", {})
+    compiled_at_values = [
+        info.get("compiled_at", "")
+        for info in ingested.values()
+        if isinstance(info, dict) and info.get("compiled_at")
+    ]
+    if compiled_at_values:
+        return max(compiled_at_values)
+    return state.get("last_auto_compile_date", "never")
 
 
 def cmd_status() -> None:
@@ -81,7 +99,7 @@ def cmd_status() -> None:
     else:
         print()
 
-    last_compile = state.get("last_auto_compile_date", "never")
+    last_compile = get_last_compile_marker(state)
     last_lint = state.get("last_lint", "never")
     total_cost = state.get("total_cost", 0.0)
 
@@ -91,12 +109,32 @@ def cmd_status() -> None:
 
 
 def run_script(script_name: str, extra_args: list[str] | None = None) -> int:
-    """Run a wiki script via uv."""
+    """Run a wiki script via the current Python interpreter."""
     script_path = SCRIPTS_DIR / script_name
-    cmd = ["uv", "run", "--directory", str(ROOT_DIR), "python", str(script_path)]
+    cmd = [sys.executable, str(script_path)]
     if extra_args:
         cmd.extend(extra_args)
-    return subprocess.call(cmd)
+    return subprocess.call(cmd, cwd=str(ROOT_DIR))
+
+
+def run_script_with_uv(script_name: str, extra_args: list[str] | None = None) -> int:
+    """Run a wiki script via uv when project-only dependencies are required."""
+    uv_bin = find_uv()
+    if not uv_bin:
+        print("uv not found; cannot run this command in full mode.", file=sys.stderr)
+        return 1
+
+    script_path = SCRIPTS_DIR / script_name
+    cmd = [uv_bin, "run", "--directory", str(ROOT_DIR), "python", str(script_path)]
+    if extra_args:
+        cmd.extend(extra_args)
+
+    env = os.environ.copy()
+    if env.get("WSL_DISTRO_NAME"):
+        env.setdefault("UV_PROJECT_ENVIRONMENT", str(Path.home() / ".cache" / "llm-wiki" / ".venv"))
+        env.setdefault("UV_LINK_MODE", "copy")
+
+    return subprocess.call(cmd, cwd=str(ROOT_DIR), env=env)
 
 
 def main() -> None:
@@ -109,13 +147,23 @@ def main() -> None:
 
     if command == "status":
         cmd_status()
+    elif command == "doctor":
+        if not extra:
+            extra = ["--quick"]
+        run_script("doctor.py", extra)
     elif command == "compile":
         run_script("compile.py", extra)
     elif command == "query":
         run_script("query.py", extra)
     elif command == "lint":
-        if "--fix" in extra:
-            extra = [x for x in extra if x != "--fix"]
+        if not extra:
+            extra = ["--structural-only"]
+        elif "--full" in extra:
+            extra = [x for x in extra if x != "--full"]
+            run_script_with_uv("lint.py", extra)
+            return
+        elif "--fix" in extra:
+            extra = [x for x in extra if x not in {"--fix", "--full"}]
             extra.append("--structural-only")
         run_script("lint.py", extra)
     elif command == "rebuild":

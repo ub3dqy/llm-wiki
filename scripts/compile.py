@@ -23,6 +23,44 @@ from utils import file_hash, list_daily_logs, list_wiki_articles, load_state, re
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
+def count_log_entries(log_path: Path) -> int:
+    """Count structured entries in a daily log."""
+    content = log_path.read_text(encoding="utf-8")
+    return content.count("\n## [")
+
+
+def build_compile_plan(log_paths: list[Path], state: dict) -> list[dict[str, str | int]]:
+    """Build a lightweight staging summary for compile candidates."""
+    plan: list[dict[str, str | int]] = []
+    ingested = state.get("ingested", {})
+    for log_path in log_paths:
+        prev = ingested.get(log_path.name, {})
+        current_hash = file_hash(log_path)
+        prev_hash = prev.get("hash", "")
+        status = "new" if not prev else "changed" if prev_hash != current_hash else "unchanged"
+        plan.append(
+            {
+                "file": log_path.name,
+                "status": status,
+                "entries": count_log_entries(log_path),
+                "last_compiled_at": prev.get("compiled_at", "never"),
+                "hash_prefix": current_hash[:12],
+            }
+        )
+    return plan
+
+
+def print_compile_plan(plan: list[dict[str, str | int]]) -> None:
+    """Print a staging-style summary for dry-run and operator visibility."""
+    print("Compile staging summary:")
+    for item in plan:
+        print(
+            f"  - {item['file']}: status={item['status']}, "
+            f"entries={item['entries']}, last_compiled_at={item['last_compiled_at']}, "
+            f"hash={item['hash_prefix']}"
+        )
+
+
 async def compile_daily_log(log_path: Path, state: dict) -> float:
     """Compile a single daily log into wiki articles. Returns API cost."""
     from claude_agent_sdk import ClaudeAgentOptions, query
@@ -60,17 +98,23 @@ to create a new article or update an existing one. Use Grep to find related arti
 
 ### Rules:
 
+0. **Make a staging plan first** — decide which articles will be created vs updated
+   before editing files. Keep the set tight and avoid speculative new pages.
 1. **Extract key concepts** — identify 3-7 distinct concepts worth their own article
 2. **Check existing articles** — Read any related articles from the index before writing.
    Use Grep to search for related terms across wiki/
 3. **Create concept articles** in `wiki/concepts/` — one .md file per concept
-   - Use YAML frontmatter: title, type (concept), created, updated, sources, project, tags
+   - Use YAML frontmatter: title, type (concept), created, updated, sources, confidence, project, tags
    - Use `[[wikilinks]]` for cross-references (e.g. `[[concepts/prisma-migrations]]`)
    - Write in encyclopedia style — neutral, comprehensive
 4. **Create connection articles** in `wiki/connections/` if the log reveals non-obvious
    relationships between 2+ existing concepts
 5. **Update existing articles** if the log adds new info to concepts already in the wiki
    - Read the existing article first, then use Edit to add info
+   - When updating an existing compile-generated article, preserve and revise `confidence`
+     if needed instead of silently dropping it
+   - If an older compile-generated article is missing `confidence` or `## Provenance`,
+     add them during the update
 6. **Update index.md** at `{INDEX_FILE}` — add new entries under the appropriate section
 7. **Append to log.md** at `{LOG_FILE}`:
    ```
@@ -79,6 +123,21 @@ to create a new article or update an existing one. Use Grep to find related arti
    - Articles created: [[concepts/x]], [[concepts/y]]
    - Articles updated: [[concepts/z]] (if any)
    ```
+
+### Provenance and confidence:
+
+- `sources:` must only list the concrete source files that informed the article
+  (for this workflow, usually `daily/{{log_path.name}}`, plus any existing article sources
+  if you are merging into an already-sourced page)
+- `confidence:` is required for every newly created compile-generated concept/connection:
+  - `extracted` — directly supported by the daily log
+  - `inferred` — synthesized from multiple statements in the log
+  - `to-verify` — plausible but uncertain, ambiguous, or dependent on incomplete context
+- Add a `## Provenance` section to every newly created compile-generated article:
+  - `- Source log: daily/{{log_path.name}}`
+  - `- Confidence: <value> — short reason`
+  - `- Basis: 1-3 bullets explaining what was directly observed vs inferred`
+- When a claim is uncertain, prefer `confidence: to-verify` and say so explicitly.
 
 ### File paths:
 - Write concept articles to: {CONCEPTS_DIR}
@@ -91,6 +150,7 @@ to create a new article or update an existing one. Use Grep to find related arti
 - Every article: link to at least 2 other articles via [[wikilinks]]
 - Key Points: 3-5 bullet points
 - Details: 2+ paragraphs
+- Compile-generated articles: include `## Provenance`
 - Related Concepts: 2+ entries
 - Sources: cite the daily log with specific claims
 """
@@ -165,11 +225,16 @@ def main() -> None:
         print("Nothing to compile — all daily logs are up to date.")
         return
 
+    plan = build_compile_plan(to_compile, state)
+
     print(f"{'[DRY RUN] ' if args.dry_run else ''}Files to compile ({len(to_compile)}):")
     for f in to_compile:
         print(f"  - {f.name}")
+    print()
+    print_compile_plan(plan)
 
     if args.dry_run:
+        print("\nDry run only: no Agent SDK session started, no wiki files changed.")
         return
 
     total_cost = 0.0
