@@ -1,0 +1,11 @@
+{
+  "example-project": [
+    "example-project",
+    "example_project",
+    "example project"
+  ],
+  "example-other": [
+    "example-other",
+    "other-project"
+  ]
+}

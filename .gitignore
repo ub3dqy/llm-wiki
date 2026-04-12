@@ -31,10 +31,11 @@ docs/
 # Working configs with personal paths (use .example versions)
 skills/wiki-save/SKILL.md
 codex-hooks.example.json
+scripts/project_aliases.local.json
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Claude plans
-.claude/plans/
+# Claude local workspace
+.claude/
