@@ -21,6 +21,8 @@ except ModuleNotFoundError:  # pragma: no cover
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 HOOKS_DIR = ROOT_DIR / "hooks" / "codex"
+WIKI_DIR = ROOT_DIR / "wiki"
+INDEX_FILE = ROOT_DIR / "index.md"
 from runtime_utils import find_uv, is_wsl
 
 
@@ -29,6 +31,31 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+
+
+def has_bootstrap_articles() -> bool:
+    if not WIKI_DIR.exists():
+        return False
+    return any(WIKI_DIR.rglob("*.md"))
+
+
+def check_wiki_structure() -> CheckResult:
+    expected_dirs = [
+        WIKI_DIR / "concepts",
+        WIKI_DIR / "connections",
+        WIKI_DIR / "sources",
+        WIKI_DIR / "entities",
+        WIKI_DIR / "qa",
+        WIKI_DIR / "analyses",
+        ROOT_DIR / "daily",
+        ROOT_DIR / "raw",
+        ROOT_DIR / "reports",
+    ]
+    missing = [path for path in expected_dirs if not path.exists()]
+    if missing or not INDEX_FILE.exists():
+        detail = "wiki/ directories or index.md missing. Run: uv run python scripts/setup.py"
+        return CheckResult("wiki_structure", False, detail)
+    return CheckResult("wiki_structure", True, "Bootstrap files and directories are present")
 
 def check_python() -> CheckResult:
     version = sys.version_info
@@ -228,6 +255,9 @@ def check_structural_lint() -> CheckResult:
 
 
 def check_query_preview_smoke() -> CheckResult:
+    if not has_bootstrap_articles():
+        return CheckResult("query_preview_smoke", True, "Skipped on bootstrap-only wiki (no articles yet)")
+
     ok, output = run_script_check(
         "query.py",
         ["что wiki знает про llm-wiki-architecture", "--preview"],
@@ -248,6 +278,13 @@ def check_query_preview_smoke() -> CheckResult:
 
 
 def check_wiki_cli_query_preview_smoke() -> CheckResult:
+    if not has_bootstrap_articles():
+        return CheckResult(
+            "wiki_cli_query_preview_smoke",
+            True,
+            "Skipped on bootstrap-only wiki (no articles yet)",
+        )
+
     ok, output = run_script_check(
         "wiki_cli.py",
         ["query", "что wiki знает про llm-wiki-architecture", "--preview"],
@@ -363,6 +400,7 @@ def print_result(result: CheckResult) -> None:
 
 def get_quick_checks() -> list[CheckResult]:
     return [
+        check_wiki_structure(),
         check_python(),
         check_uv(),
         check_index_health(),
@@ -378,6 +416,7 @@ def get_quick_checks() -> list[CheckResult]:
 
 def get_full_checks() -> list[CheckResult]:
     return [
+        check_wiki_structure(),
         check_python(),
         check_uv(),
         check_runtime_mode(),
@@ -412,6 +451,8 @@ def main() -> None:
     for result in checks:
         print_result(result)
         failed = failed or not result.ok
+        if result.name == "wiki_structure" and not result.ok:
+            sys.exit(1)
 
     if failed:
         sys.exit(1)

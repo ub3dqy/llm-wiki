@@ -83,18 +83,27 @@ cd llm-wiki
 # 2. Install Python dependencies
 uv sync
 
-# 3. Copy hook settings to your global Claude Code config
-# Add the hooks section from settings.example.json to your ~/.claude/settings.json
-# IMPORTANT: Update all paths to match your clone location
+# 3. Bootstrap the wiki structure
+uv run python scripts/setup.py
 
-# 4. Copy the /wiki-save skill
-cp -r skills/wiki-save ~/.claude/skills/wiki-save
-# Update paths in SKILL.md to match your clone location
+# 4. Verify everything is wired correctly
+uv run python scripts/doctor.py --quick
 
-# 5. Start a new Claude Code session — wiki context will be injected automatically
+# 5. Follow the next steps printed by setup.py:
+#    - Add hooks to ~/.claude/settings.json
+#    - Copy skills/wiki-save to ~/.claude/skills/
+#    - (optional) Copy codex-hooks.template.json to ~/.codex/hooks.json
+
+# 6. Start a new Claude Code session — wiki context will be injected automatically
 ```
 
+`setup.py` is idempotent — you can safely re-run it to restore missing bootstrap files
+or recreate the local alias template.
+
 ### Configuration
+
+After `setup.py`, use the printed repo path when replacing `/path/to/llm-wiki` in your
+hook and skill files. You can keep this section as a reference for the manual edits.
 
 All paths in hook commands and skill files must point to your wiki clone location. Search and replace the example path with your actual path:
 
