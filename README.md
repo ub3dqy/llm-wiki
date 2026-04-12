@@ -29,10 +29,9 @@ git clone https://github.com/YOUR_USERNAME/llm-wiki.git
 cd llm-wiki
 uv sync
 uv run python scripts/setup.py            # creates wiki/, .env, local configs
-uv run python scripts/doctor.py --quick   # verifies everything is wired
 ```
 
-Then follow the `Next steps` printed by `setup.py` to wire hooks into `~/.claude/settings.json` (and optionally `~/.codex/hooks.json`).
+Then verify the install with `uv run python scripts/doctor.py --quick` — all 13 checks should be green. After that, follow the `Next steps` printed by `setup.py` to wire hooks into `~/.claude/settings.json` (and optionally `~/.codex/hooks.json`).
 
 ### Who this is for
 
@@ -349,8 +348,8 @@ Instantly creates or updates a wiki article from the current conversation. Works
 
 ```
 .
-├── .gitignore                 # Local-only files and generated workspace state
-├── .python-version            # Preferred Python version for local tooling
+├── .gitignore                  # Local-only files and generated workspace state
+├── .python-version             # Preferred Python version for local tooling
 ├── AGENTS.md                   # Project-level instructions for Codex
 ├── CLAUDE.md                   # Wiki schema, workflows, and conventions
 ├── CODE_OF_CONDUCT.md          # Community participation guidelines
