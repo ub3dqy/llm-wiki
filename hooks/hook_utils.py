@@ -10,12 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from config import PROJECT_ALIASES  # noqa: E402
+from config import (  # noqa: E402
+    PROJECT_ALIASES,
+    WIKI_DEBOUNCE_SEC as DEBOUNCE_SEC,
+    WIKI_MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS,
+    WIKI_MAX_TURNS as MAX_TURNS,
+)
 from utils import parse_frontmatter  # noqa: E402
-
-MAX_TURNS = 30
-MAX_CONTEXT_CHARS = 15_000
-DEBOUNCE_SEC = 10
 
 _WINDOWS_DRIVE_RE = re.compile(r"^([a-zA-Z]):(?:/|$)")
 _WSL_DRIVE_RE = re.compile(r"^/mnt/([a-zA-Z])(?:/|$)")

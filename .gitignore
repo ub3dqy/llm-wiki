@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Local environment overrides
+.env
+
 # State & logs (local, not committed)
 scripts/state.json
 scripts/*.log

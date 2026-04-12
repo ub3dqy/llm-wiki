@@ -148,8 +148,23 @@ or recreate the local alias template.
 
 ### Configuration
 
+After running `setup.py`, a `.env` file is created in the repo root from
+`.env.example`. This file is gitignored - edit it freely with your local
+preferences. Supported keys:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `WIKI_TIMEZONE` | `UTC` | IANA timezone for daily log boundaries and timestamps. Example: `America/Los_Angeles`. |
+| `WIKI_COMPILE_AFTER_HOUR` | `18` | Hour (0-23) after which `flush.py` auto-triggers `compile.py`. |
+| `WIKI_MAX_TURNS` | `30` | Max transcript turns captured for flush processing. |
+| `WIKI_MAX_CONTEXT_CHARS` | `15000` | Max characters captured from a transcript. |
+| `WIKI_DEBOUNCE_SEC` | `10` | Debounce window for cascading hooks. |
+
+Unset keys fall back to defaults. Invalid values print a `[config] warning`
+at import time and also fall back to the default.
+
 After `setup.py`, use the printed repo path when replacing `/path/to/llm-wiki` in your
-hook and skill files. You can keep this section as a reference for the manual edits.
+hook and skill files. You can keep the rest of this section as a reference for the manual edits.
 
 All paths in hook commands and skill files must point to your wiki clone location. Search and replace the example path with your actual path:
 

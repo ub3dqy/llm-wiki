@@ -9,7 +9,7 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # Recursion guard
@@ -19,6 +19,7 @@ if os.environ.get("CLAUDE_INVOKED_BY"):
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+from config import WIKI_MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS, WIKI_MAX_TURNS as MAX_TURNS, WIKI_TIMEZONE  # noqa: E402
 
 # Import shared extraction logic
 sys.path.insert(0, str(ROOT / "hooks"))
@@ -69,7 +70,11 @@ def main() -> None:
         return
 
     try:
-        context, turn_count = extract_conversation_context(transcript_path)
+        context, turn_count = extract_conversation_context(
+            transcript_path,
+            max_turns=MAX_TURNS,
+            max_chars=MAX_CONTEXT_CHARS,
+        )
     except Exception as e:
         logging.error("Context extraction failed: %s", e)
         return
@@ -86,7 +91,7 @@ def main() -> None:
     project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
 
     # Save context to temp file for flush.py
-    timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(WIKI_TIMEZONE).strftime("%Y%m%d-%H%M%S")
     context_file = SCRIPTS_DIR / f"session-flush-{session_id}-{timestamp}.md"
     context_file.write_text(context, encoding="utf-8")
 

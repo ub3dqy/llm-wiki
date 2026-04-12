@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from config import WIKI_TIMEZONE  # noqa: E402
 
 from hook_utils import infer_project_name_from_cwd, parse_frontmatter
 
@@ -105,7 +108,7 @@ def get_recent_changes() -> list[dict]:
     if not WIKI_DIR.exists():
         return []
 
-    today = datetime.now(timezone.utc).astimezone().date()
+    today = datetime.now(WIKI_TIMEZONE).date()
     cutoff = today - timedelta(days=RECENT_CHANGES_DAYS)
 
     results: list[dict] = []
@@ -147,7 +150,7 @@ def format_recent_changes(changes: list[dict]) -> str:
 
 def get_recent_log() -> str:
     """Read the most recent daily log (today or yesterday)."""
-    today = datetime.now(timezone.utc).astimezone()
+    today = datetime.now(WIKI_TIMEZONE)
 
     for offset in range(2):
         date = today - timedelta(days=offset)
@@ -297,7 +300,7 @@ def build_context(cwd: str = "") -> str:
     """Assemble context. If cwd is provided, prioritize project-relevant articles."""
     parts: list[str] = []
 
-    today = datetime.now(timezone.utc).astimezone()
+    today = datetime.now(WIKI_TIMEZONE)
     project_name = cwd_to_project_name(cwd)
 
     header = trim_text(

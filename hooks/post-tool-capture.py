@@ -9,7 +9,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # Recursion guard
@@ -21,6 +21,9 @@ DAILY_DIR = ROOT / "daily"
 SCRIPTS_DIR = ROOT / "scripts"
 DEBOUNCE_FILE = SCRIPTS_DIR / ".last-tool-capture"
 DEBOUNCE_SEC = 30
+
+sys.path.insert(0, str(ROOT / "scripts"))
+from config import WIKI_TIMEZONE  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "hooks"))
 from hook_utils import infer_project_name_from_cwd  # noqa: E402
@@ -42,11 +45,11 @@ INTERESTING_PATTERNS = [
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(WIKI_TIMEZONE).isoformat(timespec="seconds")
 
 
 def _today_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+    return datetime.now(WIKI_TIMEZONE).strftime("%Y-%m-%d")
 
 
 def check_debounce() -> bool:

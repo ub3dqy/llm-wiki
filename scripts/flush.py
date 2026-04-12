@@ -13,9 +13,10 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
+from config import WIKI_COMPILE_AFTER_HOUR, WIKI_TIMEZONE
 from runtime_utils import build_uv_python_cmd
 
 # Recursion guard: flush.py uses Agent SDK → Claude Code → hook → flush.py
@@ -31,7 +32,6 @@ DAILY_DIR = ROOT_DIR / "daily"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 STATE_FILE = SCRIPTS_DIR / "state.json"
 LOCK_DIR = SCRIPTS_DIR / "locks"
-COMPILE_TRIGGER_HOUR = 18
 MAX_CONCURRENT_FLUSH = 2
 LOCK_TIMEOUT_SEC = 120  # stale lock cleanup after 2 minutes
 
@@ -91,11 +91,11 @@ def release_flush_lock(lock_path: Path | None) -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(WIKI_TIMEZONE).isoformat(timespec="seconds")
 
 
 def _today_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+    return datetime.now(WIKI_TIMEZONE).strftime("%Y-%m-%d")
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +218,8 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
 
 def maybe_trigger_compilation() -> None:
     """Spawn compile.py if it's past the trigger hour and today hasn't been compiled."""
-    now = datetime.now(timezone.utc).astimezone()
-    if now.hour < COMPILE_TRIGGER_HOUR:
+    now = datetime.now(WIKI_TIMEZONE)
+    if now.hour < WIKI_COMPILE_AFTER_HOUR:
         return
 
     state = load_flush_state()

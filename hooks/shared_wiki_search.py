@@ -12,6 +12,9 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from config import WIKI_TIMEZONE  # noqa: E402
+
 from hook_utils import infer_project_name_from_cwd, parse_frontmatter
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -242,7 +245,7 @@ def score_article(path: Path, keywords: set[str], phrases: set[str], project_nam
     if updated_raw:
         try:
             updated_date = datetime.strptime(updated_raw, "%Y-%m-%d").date()
-            if updated_date >= (datetime.now().date() - timedelta(days=14)):
+            if updated_date >= (datetime.now(WIKI_TIMEZONE).date() - timedelta(days=14)):
                 score += 1
         except ValueError:
             pass

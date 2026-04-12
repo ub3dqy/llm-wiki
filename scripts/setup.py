@@ -18,6 +18,8 @@ INDEX_FILE = ROOT_DIR / "index.md"
 LOG_FILE = ROOT_DIR / "log.md"
 ALIASES_EXAMPLE = ROOT_DIR / "scripts" / "project_aliases.example.json"
 ALIASES_LOCAL = ROOT_DIR / "scripts" / "project_aliases.local.json"
+ENV_EXAMPLE = ROOT_DIR / ".env.example"
+ENV_LOCAL = ROOT_DIR / ".env"
 
 DIRECTORIES = [
     WIKI_DIR / "concepts",
@@ -118,6 +120,9 @@ def print_next_steps(repo_root: Path) -> None:
     print(f"[ok] Wiki structure ready at {repo_path}")
     print()
     print("Next steps:")
+    print("0. Review your .env file (created from .env.example):")
+    print("   cat .env")
+    print("   Adjust WIKI_TIMEZONE, WIKI_COMPILE_AFTER_HOUR etc. to your preferences.")
     print("1. Add hooks to your ~/.claude/settings.json:")
     print("   See settings.example.json - replace /path/to/llm-wiki with:")
     print(f"   {repo_path}")
@@ -142,6 +147,7 @@ def main() -> int:
     index_changed = ensure_copy(INDEX_EXAMPLE, INDEX_FILE, dry_run=args.dry_run, force=args.force)
     ensure_log(LOG_FILE, dry_run=args.dry_run)
     ensure_copy(ALIASES_EXAMPLE, ALIASES_LOCAL, dry_run=args.dry_run, force=args.force)
+    ensure_copy(ENV_EXAMPLE, ENV_LOCAL, dry_run=args.dry_run, force=args.force)
 
     if index_changed:
         ok = sync_index(dry_run=args.dry_run) and ok

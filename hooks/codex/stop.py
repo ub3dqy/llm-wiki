@@ -13,7 +13,7 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # Recursion guard: if spawned by flush.py (Agent SDK -> Claude Code -> hook), exit.
@@ -23,6 +23,9 @@ if os.environ.get("CLAUDE_INVOKED_BY"):
 ROOT = Path(__file__).resolve().parent.parent.parent
 HOOKS_DIR = ROOT / "hooks"
 SCRIPTS_DIR = ROOT / "scripts"
+
+sys.path.insert(0, str(SCRIPTS_DIR))
+from config import WIKI_TIMEZONE  # noqa: E402
 
 sys.path.insert(0, str(HOOKS_DIR))
 from hook_utils import (  # noqa: E402
@@ -92,7 +95,7 @@ def main() -> None:
 
     project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
 
-    timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(WIKI_TIMEZONE).strftime("%Y%m%d-%H%M%S")
     context_file = SCRIPTS_DIR / f"session-flush-{session_id}-{timestamp}.md"
     context_file.write_text(context, encoding="utf-8")
 

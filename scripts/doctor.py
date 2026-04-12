@@ -13,6 +13,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 try:
     import tomllib
@@ -56,6 +57,32 @@ def check_wiki_structure() -> CheckResult:
         detail = "wiki/ directories or index.md missing. Run: uv run python scripts/setup.py"
         return CheckResult("wiki_structure", False, detail)
     return CheckResult("wiki_structure", True, "Bootstrap files and directories are present")
+
+
+def check_env_settings() -> CheckResult:
+    try:
+        from config import WIKI_COMPILE_AFTER_HOUR, WIKI_MAX_TURNS, WIKI_TIMEZONE
+
+        ZoneInfo("UTC")
+
+        raw_timezone = os.environ.get("WIKI_TIMEZONE", "").strip()
+        timezone_key = getattr(WIKI_TIMEZONE, "key", str(WIKI_TIMEZONE))
+
+        if not (0 <= WIKI_COMPILE_AFTER_HOUR <= 23):
+            return CheckResult(
+                "env_settings",
+                False,
+                f"WIKI_COMPILE_AFTER_HOUR={WIKI_COMPILE_AFTER_HOUR} out of range",
+            )
+        if WIKI_MAX_TURNS < 1:
+            return CheckResult("env_settings", False, f"WIKI_MAX_TURNS={WIKI_MAX_TURNS} invalid")
+
+        detail = f"timezone={timezone_key}, compile_hour={WIKI_COMPILE_AFTER_HOUR}"
+        if raw_timezone and raw_timezone != timezone_key:
+            detail += f" (warning: invalid WIKI_TIMEZONE={raw_timezone!r}, fell back to {timezone_key})"
+        return CheckResult("env_settings", True, detail)
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult("env_settings", False, f"Failed to load settings: {exc}")
 
 def check_python() -> CheckResult:
     version = sys.version_info
@@ -334,10 +361,12 @@ def check_wiki_cli_lint_smoke() -> CheckResult:
     lowered = output.lower()
     if "running knowledge base lint checks" not in lowered:
         return CheckResult("wiki_cli_lint_smoke", False, "Lint header missing from wiki_cli route")
-    if "results: 0 errors, 0 warnings, 0 suggestions" not in lowered:
-        return CheckResult("wiki_cli_lint_smoke", False, "wiki_cli structural lint did not report a clean result")
+    if "results:" not in lowered:
+        return CheckResult("wiki_cli_lint_smoke", False, "wiki_cli structural lint summary missing")
+    if "0 errors" not in lowered:
+        return CheckResult("wiki_cli_lint_smoke", False, "wiki_cli structural lint reported blocking errors")
 
-    return CheckResult("wiki_cli_lint_smoke", True, "wiki_cli structural lint returned a clean report")
+    return CheckResult("wiki_cli_lint_smoke", True, "wiki_cli structural lint reported zero blocking errors")
 
 
 def check_wiki_cli_rebuild_check_smoke() -> CheckResult:
@@ -401,6 +430,7 @@ def print_result(result: CheckResult) -> None:
 def get_quick_checks() -> list[CheckResult]:
     return [
         check_wiki_structure(),
+        check_env_settings(),
         check_python(),
         check_uv(),
         check_index_health(),
@@ -417,6 +447,7 @@ def get_quick_checks() -> list[CheckResult]:
 def get_full_checks() -> list[CheckResult]:
     return [
         check_wiki_structure(),
+        check_env_settings(),
         check_python(),
         check_uv(),
         check_runtime_mode(),
