@@ -148,6 +148,20 @@ async def run_flush(context: str, session_id: str, project_name: str = "unknown"
     """Use Claude Agent SDK to evaluate and summarize the conversation context."""
     from claude_agent_sdk import ClaudeAgentOptions, query
 
+    try:
+        from claude_agent_sdk import ProcessError
+    except ImportError:
+        ProcessError = None  # type: ignore[assignment,misc]
+
+    def _log_cli_stderr(line: str) -> None:
+        """Forward bundled Claude CLI stderr into flush.log for diagnostics."""
+        try:
+            for subline in line.splitlines():
+                if subline.strip():
+                    logging.info("[agent-stderr] %s", subline)
+        except Exception:
+            pass
+
     prompt = f"""You are a knowledge extraction agent. Read the conversation context below and
 decide if it contains anything worth preserving in a personal knowledge base.
 
@@ -189,6 +203,7 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                 options=ClaudeAgentOptions(
                     allowed_tools=[],
                     max_turns=2,
+                    stderr=_log_cli_stderr,
                 ),
             ):
                 if hasattr(message, "content"):
@@ -197,6 +212,14 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                             result_text += block.text
             break  # success
         except Exception as e:
+            if ProcessError is not None and isinstance(e, ProcessError):
+                exit_code = getattr(e, "exit_code", None)
+                stderr_text = getattr(e, "stderr", None) or "<empty>"
+                logging.error("Agent SDK ProcessError: exit_code=%s message=%s", exit_code, e)
+                for subline in stderr_text.splitlines():
+                    if subline.strip():
+                        logging.error("[process-stderr] %s", subline)
+                return
             if attempt < max_retries and "timeout" in str(e).lower():
                 logging.warning("Agent SDK timeout (attempt %d/%d): %s", attempt + 1, max_retries + 1, e)
                 await asyncio.sleep(2)
