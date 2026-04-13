@@ -18,6 +18,10 @@ This wiki serves as a **global knowledge base across all projects**. It combines
 ├── pyproject.toml     # Python dependencies (uv)
 │
 ├── raw/               # Immutable source documents (manual ingest)
+│   ├── <project>/     # One subfolder per project you track in your wiki.
+│   │                  # Names should match the canonical project taxonomy
+│   │                  # in your local scripts/project_aliases.local.json.
+│   ├── external/      # Sources that do not fit any project category
 │   └── assets/        # Downloaded images and media
 │
 ├── daily/             # Auto-captured conversation logs (from hooks)
@@ -95,7 +99,8 @@ concepts/connections** from `daily/`.
 
 ### Ingest (adding a new source from raw/)
 
-1. Read the source document from `raw/`.
+1. Read the source document from `raw/<project>/` (or `raw/external/` if it does not fit an existing project). Project folders mirror the `project:` taxonomy used across your wiki articles — subfolder names should match the canonical project names in your local `scripts/project_aliases.local.json` configuration.
+1b. Before creating the summary page, ensure the raw file is physically located in the correct project subfolder. If a new user dropped a document into `raw/` root, move it into the appropriate subfolder first. This keeps `raw/` immutable at the file-content level but organized at the folder level.
 2. Discuss key takeaways with the user.
 3. Create a summary page in `wiki/sources/` with frontmatter.
 4. Update `wiki/overview.md` if the source changes the big picture.
