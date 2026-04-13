@@ -64,15 +64,29 @@ def slugify(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+_CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 
 
 def extract_wikilinks(content: str) -> list[str]:
     """Extract all [[wikilink]] targets from markdown content.
 
     Handles Obsidian-style aliases: [[target|display name]] → target
+    Also handles markdown table escape: [[target\\|display]] → target
+    (when wikilink appears inside a markdown table cell, the alias separator
+    must be escaped as \\| so the table parser does not see it as a column
+    boundary; this escape must be unescaped before splitting on |).
+
+    Skips wikilinks inside code spans and code blocks — `[[wikilink]]` and
+    ```python\n[[wikilink]]\n``` are illustrative references, not real links.
     """
-    raw = _WIKILINK_RE.findall(content)
-    return [link.split("|")[0] for link in raw]
+    # Mask out code spans and code blocks first to avoid extracting
+    # illustrative wikilinks from them
+    cleaned = _CODE_BLOCK_RE.sub("", content)
+    cleaned = _INLINE_CODE_RE.sub("", cleaned)
+    raw = _WIKILINK_RE.findall(cleaned)
+    # Unescape markdown table pipe escape (\| -> |) before splitting on alias separator
+    return [link.replace("\\|", "|").split("|")[0] for link in raw]
 
 
 def content_has_wikilink_target(content: str, link_target: str) -> bool:
