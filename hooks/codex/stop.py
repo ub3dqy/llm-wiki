@@ -68,7 +68,21 @@ def _emit_ok(message: str | None = None) -> None:
         pass
 
 
-def main() -> None:
+def _spawn_worker(hook_input: dict) -> None:
+    worker = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "--worker"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    if worker.stdin is None:
+        raise RuntimeError("worker stdin pipe not created")
+    worker.stdin.write(json.dumps(hook_input, ensure_ascii=False).encode("utf-8"))
+    worker.stdin.close()
+
+
+def main_light() -> None:
     hook_input = parse_hook_stdin()
     if hook_input is None:
         logging.error("Failed to parse stdin")
@@ -80,9 +94,6 @@ def main() -> None:
     cwd = hook_input.get("cwd", "")
     transcript_path_str = get_transcript_path(hook_input)
     last_assistant_message = hook_input.get("last_assistant_message")
-    degraded_mode = False
-    degraded_min = max(50, WIKI_MIN_FLUSH_CHARS // 4)
-
     logging.info("Stop fired: session=%s turn=%s", session_id, turn_id)
 
     if hook_input.get("stop_hook_active"):
@@ -92,7 +103,7 @@ def main() -> None:
 
     if not transcript_path_str:
         if isinstance(last_assistant_message, str) and last_assistant_message.strip():
-            degraded_mode = True
+            pass
         else:
             logging.info("SKIP: no transcript path and no last_assistant_message")
             _emit_ok()
@@ -103,37 +114,66 @@ def main() -> None:
         _emit_ok()
         return
 
+    try:
+        _spawn_worker(hook_input)
+        logging.info("Spawned detached worker for session %s", session_id)
+    except Exception as exc:
+        logging.error("Failed to spawn detached worker: %s", exc)
+        _emit_ok()
+        return
+
+    _emit_ok()
+
+
+def main_worker() -> None:
+    hook_input = parse_hook_stdin()
+    if hook_input is None:
+        logging.error("[stop-worker] failed to parse stdin payload")
+        return
+
+    session_id = hook_input.get("session_id", "unknown")
+    cwd = hook_input.get("cwd", "")
+    transcript_path_str = get_transcript_path(hook_input)
+    last_assistant_message = hook_input.get("last_assistant_message")
+    degraded_mode = False
+    degraded_min = max(50, WIKI_MIN_FLUSH_CHARS // 4)
+
+    logging.info("[stop-worker] started session=%s", session_id)
+
+    if not transcript_path_str:
+        if isinstance(last_assistant_message, str) and last_assistant_message.strip():
+            degraded_mode = True
+        else:
+            logging.info("[stop-worker] SKIP: no transcript path and no last_assistant_message")
+            return
+
     if degraded_mode:
         context = f"**Assistant (degraded, last-message-only):** {last_assistant_message.strip()}\n"
         turn_count = 1
-        logging.info("DEGRADED: using last_assistant_message fallback")
+        logging.info("[stop-worker] DEGRADED: using last_assistant_message fallback")
     else:
         transcript_path = Path(transcript_path_str)
         if not transcript_path.exists():
-            logging.info("SKIP: transcript missing: %s", transcript_path_str)
-            _emit_ok()
+            logging.info("[stop-worker] SKIP: transcript missing: %s", transcript_path_str)
             return
 
         try:
             context, turn_count = extract_conversation_context(transcript_path)
         except Exception as exc:
-            logging.error("Context extraction failed: %s", exc)
-            _emit_ok()
+            logging.error("[stop-worker] Context extraction failed: %s", exc)
             return
 
     content_len = len(context.strip())
     if content_len == 0:
-        logging.info("SKIP: empty context (entries=%d)", turn_count)
-        _emit_ok()
+        logging.info("[stop-worker] SKIP: empty context (entries=%d)", turn_count)
         return
 
     min_chars = degraded_min if degraded_mode else WIKI_MIN_FLUSH_CHARS
     if content_len < min_chars:
         if degraded_mode:
-            logging.info("SKIP: degraded too short (%d chars, min %d)", content_len, min_chars)
+            logging.info("[stop-worker] SKIP: degraded too short (%d chars, min %d)", content_len, min_chars)
         else:
-            logging.info("SKIP: only %d chars (min %d)", content_len, WIKI_MIN_FLUSH_CHARS)
-        _emit_ok()
+            logging.info("[stop-worker] SKIP: only %d chars (min %d)", content_len, WIKI_MIN_FLUSH_CHARS)
         return
 
     project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
@@ -171,23 +211,22 @@ def main() -> None:
         )
         update_debounce(DEBOUNCE_FILE)
         logging.info(
-            "Spawned flush.py for session %s, project=%s (%d turns, %d chars)",
+            "[stop-worker] Spawned flush.py for session %s, project=%s (%d turns, %d chars)",
             session_id,
             project_name,
             turn_count,
             len(context),
         )
     except Exception as exc:
-        logging.error("Failed to spawn flush.py: %s", exc)
-        _emit_ok()
+        logging.error("[stop-worker] Failed to spawn flush.py: %s", exc)
         return
-
-    _emit_ok()
-
 
 if __name__ == "__main__":
     try:
-        main()
+        if "--worker" in sys.argv:
+            main_worker()
+        else:
+            main_light()
     except BrokenPipeError:
         _detach_stdout()
         pass
