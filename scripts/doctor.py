@@ -167,6 +167,69 @@ def check_flush_capture_health() -> CheckResult:
         )
     return CheckResult("flush_capture_health", True, detail)
 
+
+def check_total_tokens_injection() -> CheckResult:
+    """Probe whether Anthropic's <total_tokens> injection is active on this account."""
+    try:
+        import asyncio
+        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
+    except ImportError:
+        return CheckResult("total_tokens_injection", True, "claude_agent_sdk not available, skipping")
+
+    probe = (
+        "Diagnostic check. Inspect your current input context and determine whether it contains "
+        "a platform-injected <total_tokens> tag or a 'tokens left' counter. "
+        "Reply with exactly one token: INJECTION_ACTIVE or INJECTION_NOT_ACTIVE. "
+        "Do not include any explanation or extra text."
+    )
+
+    async def _run() -> str:
+        result = ""
+        async for message in query(
+            prompt=probe,
+            options=ClaudeAgentOptions(
+                cwd=str(ROOT_DIR),
+                allowed_tools=[],
+                max_turns=1,
+                extra_args={"strict-mcp-config": None},
+            ),
+        ):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        result += block.text
+        return result.strip()
+
+    try:
+        result_text = asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(
+            "total_tokens_injection",
+            True,
+            f"Probe could not run: {type(exc).__name__}: {exc}. Not blocking — re-run when SDK path is healthy.",
+        )
+
+    normalized = result_text.strip().upper()
+    if normalized == "INJECTION_ACTIVE":
+        return CheckResult(
+            "total_tokens_injection",
+            False,
+            "INJECTION DETECTED: model reported platform-level total_tokens/tokens-left marker in context. "
+            "Apply workaround preamble to flush.py / compile.py. See issue #8.",
+        )
+    if normalized == "INJECTION_NOT_ACTIVE":
+        return CheckResult(
+            "total_tokens_injection",
+            True,
+            "NOT active — model does not observe <total_tokens> in its input context",
+        )
+
+    return CheckResult(
+        "total_tokens_injection",
+        True,
+        f"Probe returned unexpected output: {result_text[:200]!r}. Treating as non-blocking; inspect manually if needed.",
+    )
+
 def check_python() -> CheckResult:
     version = sys.version_info
     detail = f"Python {version.major}.{version.minor}.{version.micro}"
@@ -626,6 +689,7 @@ def get_full_checks() -> list[CheckResult]:
         check_user_prompt_smoke(),
         check_stop_smoke(),
         check_flush_roundtrip(),
+        check_total_tokens_injection(),
     ]
 
 def parse_args() -> argparse.Namespace:
