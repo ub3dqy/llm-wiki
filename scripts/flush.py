@@ -204,6 +204,14 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                     allowed_tools=[],
                     max_turns=2,
                     stderr=_log_cli_stderr,
+                    # Disable account-level MCP server discovery for this
+                    # subprocess. The bundled Claude CLI otherwise receives
+                    # claude.ai account MCP claims (e.g. Gmail, Calendar) via
+                    # OAuth and blocks on their interactive auth flow, causing
+                    # "Fatal error in message reader: Command failed with exit
+                    # code 1" in non-interactive subprocess context.
+                    # Ref: docs/codex-tasks/investigate-flush-agent-sdk-bug-g-report.md
+                    extra_args={"strict-mcp-config": None},
                 ),
             ):
                 if hasattr(message, "content"):
