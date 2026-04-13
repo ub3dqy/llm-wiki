@@ -30,7 +30,9 @@ raw/
 reports/
 log.md
 index.md
-docs/
+# docs/ tracked since 2026-04-14: contains Codex handoff plans/reports
+# referenced from PR descriptions. New files MUST use ${USER} placeholder
+# (no real usernames). See feedback_codex_task_handoff_workflow memory.
 
 # Working configs with personal paths (use .example versions)
 skills/wiki-save/SKILL.md
