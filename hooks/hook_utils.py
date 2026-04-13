@@ -1,7 +1,8 @@
-"""Shared utilities for Claude Code hooks (session-end, pre-compact)."""
+"""Shared utilities for Claude Code and Codex hooks."""
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 import time
@@ -161,6 +162,112 @@ def get_prompt(hook_input: dict) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _extract_claude_code_format(entries: list[object]) -> tuple[list[str], int, int]:
+    turns: list[str] = []
+    parsed_user = 0
+    parsed_assistant = 0
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        msg = entry.get("message", {})
+        if isinstance(msg, dict):
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+        else:
+            role = entry.get("role", "")
+            content = entry.get("content", "")
+
+        if role not in ("user", "assistant"):
+            continue
+
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_value = block.get("text", "")
+                    if isinstance(text_value, str) and text_value.strip():
+                        text_parts.append(text_value)
+                elif isinstance(block, str) and block.strip():
+                    text_parts.append(block)
+            content = "\n".join(text_parts)
+
+        if not isinstance(content, str) or not content.strip():
+            continue
+
+        label = "User" if role == "user" else "Assistant"
+        turns.append(f"**{label}:** {content.strip()}\n")
+        if role == "user":
+            parsed_user += 1
+        else:
+            parsed_assistant += 1
+
+    return turns, parsed_user, parsed_assistant
+
+
+def _extract_codex_format(entries: list[object]) -> tuple[list[str], int, int]:
+    turns: list[str] = []
+    parsed_user = 0
+    parsed_assistant = 0
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") != "response_item":
+            continue
+
+        payload = entry.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("type") != "message":
+            continue
+
+        role = payload.get("role", "")
+        if role not in ("user", "assistant"):
+            continue
+
+        content = payload.get("content", "")
+        text_parts: list[str] = []
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") not in ("input_text", "output_text", "text"):
+                    continue
+                text_value = block.get("text", "")
+                if isinstance(text_value, str) and text_value.strip():
+                    text_parts.append(text_value)
+        elif isinstance(content, str) and content.strip():
+            text_parts.append(content)
+
+        text_content = "\n".join(text_parts).strip()
+        if not text_content:
+            continue
+
+        label = "User" if role == "user" else "Assistant"
+        turns.append(f"**{label}:** {text_content}\n")
+        if role == "user":
+            parsed_user += 1
+        else:
+            parsed_assistant += 1
+
+    return turns, parsed_user, parsed_assistant
+
+
+def _detect_format(entries: list[object]) -> str:
+    """Detect transcript format from the first few entries."""
+    for entry in entries[:10]:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") != "response_item":
+            continue
+        payload = entry.get("payload")
+        if isinstance(payload, dict):
+            return "codex"
+    return "claude_code"
+
+
 def extract_conversation_context(
     transcript_path: Path,
     max_turns: int = MAX_TURNS,
@@ -193,33 +300,11 @@ def extract_conversation_context(
             except json.JSONDecodeError:
                 continue
 
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-
-        msg = entry.get("message", {})
-        if isinstance(msg, dict):
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-        else:
-            role = entry.get("role", "")
-            content = entry.get("content", "")
-
-        if role not in ("user", "assistant"):
-            continue
-
-        if isinstance(content, list):
-            text_parts = []
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text_parts.append(block.get("text", ""))
-                elif isinstance(block, str):
-                    text_parts.append(block)
-            content = "\n".join(text_parts)
-
-        if isinstance(content, str) and content.strip():
-            label = "User" if role == "user" else "Assistant"
-            turns.append(f"**{label}:** {content.strip()}\n")
+    format_detected = _detect_format(entries)
+    if format_detected == "codex":
+        turns, parsed_user, parsed_assistant = _extract_codex_format(entries)
+    else:
+        turns, parsed_user, parsed_assistant = _extract_claude_code_format(entries)
 
     recent = turns[-max_turns:]
     context = "\n".join(recent)
@@ -229,5 +314,14 @@ def extract_conversation_context(
         boundary = context.find("\n**")
         if boundary > 0:
             context = context[boundary + 1:]
+
+    if not context.strip():
+        logging.info(
+            "extract_conversation_context empty: format=%s entries_total=%d parsed_user=%d parsed_assistant=%d",
+            format_detected,
+            len(entries),
+            parsed_user,
+            parsed_assistant,
+        )
 
     return context, len(recent)

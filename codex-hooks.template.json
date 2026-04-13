@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "bash -lc 'source \"$HOME/.local/bin/env\" 2>/dev/null; UV_BIN=\"${UV_BIN:-$(command -v uv)}\"; if test -z \"$UV_BIN\"; then echo \"uv not found; install uv in WSL before enabling Codex hooks\" >&2; exit 1; fi; UV_PROJECT_ENVIRONMENT=\"$HOME/.cache/llm-wiki/.venv\" UV_LINK_MODE=copy \"$UV_BIN\" run --directory \"/path/to/llm-wiki\" python hooks/codex/stop.py'",
-            "timeout": 10
+            "timeout": 60
           }
         ]
       }
