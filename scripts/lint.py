@@ -179,7 +179,7 @@ def check_sparse_articles() -> list[dict]:
 
 
 def check_provenance_completeness() -> list[dict]:
-    """Check compile-generated articles for confidence and Provenance metadata."""
+    """Check concept/connection articles for confidence and Provenance metadata."""
     allowed_confidence = {"extracted", "inferred", "to-verify"}
     issues: list[dict] = []
 
@@ -187,7 +187,7 @@ def check_provenance_completeness() -> list[dict]:
         fm = parse_frontmatter(article)
         page_type = fm.get("type", "").strip()
         sources = fm.get("sources", "")
-        if page_type not in {"concept", "connection"} or not frontmatter_sources_include_prefix(sources, "daily/"):
+        if page_type not in {"concept", "connection"}:
             continue
 
         content = article.read_text(encoding="utf-8")
@@ -200,7 +200,7 @@ def check_provenance_completeness() -> list[dict]:
                 "check": "provenance_completeness",
                 "file": str(rel),
                 "detail": (
-                    "Compile-generated article must have confidence: "
+                    "Concept/connection article must have confidence: "
                     "extracted | inferred | to-verify"
                 ),
             })
@@ -210,7 +210,7 @@ def check_provenance_completeness() -> list[dict]:
                 "severity": "error",
                 "check": "provenance_completeness",
                 "file": str(rel),
-                "detail": "Compile-generated article must include a ## Provenance section",
+                "detail": "Concept/connection article must include a ## Provenance section",
             })
 
     return issues

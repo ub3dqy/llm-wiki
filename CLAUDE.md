@@ -78,8 +78,8 @@ Content here. Use [[wikilinks]] for cross-references to other pages.
 - [[Related Page 2]]
 ```
 
-`confidence` is optional for manual ingest pages, but **required for compile-generated
-concepts/connections** from `daily/`.
+`confidence` is **required for all concept and connection pages**. Source/entity/analysis/qa
+pages may omit it when the field would not add useful signal.
 
 ## Conventions
 
@@ -87,10 +87,11 @@ concepts/connections** from `daily/`.
 - **Wikilinks**: Always use `[[Page Name]]` syntax for internal links (Obsidian-compatible).
 - **One concept per page**: Don't merge unrelated topics. Split when a section grows large.
 - **Source attribution**: Every claim should be traceable to a source via the `sources` frontmatter field.
-- **Confidence labels**: compile-generated articles should declare whether claims are
+- **Confidence labels**: all concept and connection articles should declare whether claims are
   `extracted`, `inferred`, or `to-verify`.
-- **Provenance section**: compile-generated articles should include a short `## Provenance`
-  section that explains what was directly observed in the source log and what was inferred.
+- **Provenance section**: all concept and connection articles should include a short
+  `## Provenance` section that explains what was directly observed in the source material and
+  what was inferred.
 - **Contradictions**: When sources disagree, note it explicitly with a `> [!warning] Contradiction` callout.
 - **Updates over rewrites**: When new information arrives, update existing pages rather than creating duplicates.
 - **Project tags**: Use the `project` frontmatter field to tag content by origin project.
@@ -146,7 +147,7 @@ Handled by `scripts/lint.py`. Run periodically.
 4. **Stale articles** — source changed since compilation
 5. **Missing backlinks** — asymmetric links (A→B but no B→A)
 6. **Sparse articles** — fewer than 200 words
-7. **Provenance completeness** — compile-generated concepts/connections from `daily/`
+7. **Provenance completeness** — concept and connection pages
    must have valid `confidence` and `## Provenance`
 8. **Contradictions** — LLM-detected conflicting claims (costs API credits)
 
