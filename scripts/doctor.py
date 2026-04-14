@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -91,23 +93,26 @@ def check_env_settings() -> CheckResult:
         return CheckResult("env_settings", False, f"Failed to load settings: {exc}")
 
 
-def check_flush_capture_health() -> CheckResult:
-    if not FLUSH_LOG.exists():
-        return CheckResult(
-            "flush_capture_health",
-            True,
-            "No flush.log yet (fresh install). Will populate after first SessionEnd.",
-        )
+SPAWN_CHARS_RE = re.compile(r"Spawned flush\.py .* \((\d+) turns, (\d+) chars\)")
+SKIP_ONLY_CHARS_RE = re.compile(r"SKIP: only (\d+) chars \(min \d+\)")
 
-    cutoff = datetime.now() - timedelta(days=CAPTURE_HEALTH_WINDOW_DAYS)
-    session_fired = 0
-    spawned = 0
 
-    try:
-        text = FLUSH_LOG.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        return CheckResult("flush_capture_health", False, f"Could not read flush.log: {exc}")
+@lru_cache(maxsize=1)
+def _parse_flush_log_events() -> dict[str, object]:
+    now = datetime.now()
+    cutoff = now - timedelta(days=CAPTURE_HEALTH_WINDOW_DAYS)
+    cutoff_24h = now - timedelta(hours=24)
+    stats: dict[str, object] = {
+        "fired": 0,
+        "spawned": 0,
+        "spawned_chars": 0,
+        "skip_only_chars": 0,
+        "fatal_errors": 0,
+        "fatal_errors_24h": 0,
+        "latest_fatal_ts": None,
+    }
 
+    text = FLUSH_LOG.read_text(encoding="utf-8", errors="replace")
     for line in text.splitlines():
         parts = line.split(None, 3)
         if len(parts) < 4:
@@ -120,52 +125,162 @@ def check_flush_capture_health() -> CheckResult:
             continue
 
         tail = parts[3]
-        if "[session-end]" not in tail and "[pre-compact]" not in tail:
-            continue
-        if "SessionEnd fired" in tail or "PreCompact fired" in tail:
-            session_fired += 1
-        elif "Spawned flush.py" in tail:
-            spawned += 1
+        if "[session-end]" in tail or "[pre-compact]" in tail:
+            if "SessionEnd fired" in tail or "PreCompact fired" in tail:
+                stats["fired"] = int(stats["fired"]) + 1
+            elif "Spawned flush.py" in tail:
+                stats["spawned"] = int(stats["spawned"]) + 1
 
-    if session_fired == 0:
+            skip_match = SKIP_ONLY_CHARS_RE.search(tail)
+            if skip_match:
+                stats["skip_only_chars"] = int(stats["skip_only_chars"]) + int(skip_match.group(1))
+
+        spawn_match = SPAWN_CHARS_RE.search(tail)
+        if spawn_match:
+            stats["spawned_chars"] = int(stats["spawned_chars"]) + int(spawn_match.group(2))
+
+        if "Fatal error in message reader" in tail:
+            stats["fatal_errors"] = int(stats["fatal_errors"]) + 1
+            if ts >= cutoff_24h:
+                stats["fatal_errors_24h"] = int(stats["fatal_errors_24h"]) + 1
+            latest = stats["latest_fatal_ts"]
+            if latest is None or ts > latest:
+                stats["latest_fatal_ts"] = ts
+
+    return stats
+
+
+def check_flush_throughput() -> CheckResult:
+    if not FLUSH_LOG.exists():
         return CheckResult(
-            "flush_capture_health",
+            "flush_throughput",
+            True,
+            "No flush.log yet (fresh install). Will populate after first SessionEnd.",
+        )
+
+    try:
+        stats = _parse_flush_log_events()
+    except OSError as exc:
+        return CheckResult("flush_throughput", False, f"Could not read flush.log: {exc}")
+
+    fired = int(stats["fired"])
+    spawned = int(stats["spawned"])
+    if fired == 0:
+        return CheckResult(
+            "flush_throughput",
             True,
             f"No SessionEnd/PreCompact events in last {CAPTURE_HEALTH_WINDOW_DAYS} days (possibly idle)",
         )
 
-    skip_rate = 1.0 - (spawned / session_fired)
+    skip_rate = 1.0 - (spawned / fired)
     detail = (
-        f"Last {CAPTURE_HEALTH_WINDOW_DAYS}d: {spawned}/{session_fired} flushes spawned "
+        f"Last {CAPTURE_HEALTH_WINDOW_DAYS}d: {spawned}/{fired} flushes spawned "
         f"(skip rate {skip_rate:.0%})"
     )
-
-    # FAIL only when the pipeline is observably broken: many SessionEnds fired
-    # but zero flushes actually spawned. A high skip rate on its own is an
-    # observability signal, not a correctness failure — it reflects historical
-    # usage (lots of short sessions under WIKI_MIN_FLUSH_CHARS), and blocking
-    # the merge gate on historical data would be wrong because it cannot be
-    # fixed by changing the current code.
     if spawned == 0:
         return CheckResult(
-            "flush_capture_health",
+            "flush_throughput",
             False,
             f"{detail}. Pipeline appears broken: SessionEnds fired but nothing was spawned.",
         )
+    if skip_rate > 0.85:
+        return CheckResult(
+            "flush_throughput",
+            True,
+            f"{detail} [attention: very high skip rate — possible pipeline issue, investigate flush.py]",
+        )
+    if skip_rate > 0.70:
+        return CheckResult("flush_throughput", True, f"{detail} [info: moderate skip rate — monitor]")
+    return CheckResult("flush_throughput", True, detail)
 
-    if skip_rate > 0.5:
+
+def check_flush_quality_coverage() -> CheckResult:
+    if not FLUSH_LOG.exists():
         return CheckResult(
-            "flush_capture_health",
+            "flush_quality_coverage",
             True,
-            f"{detail} [attention: high skip rate — consider lowering WIKI_MIN_FLUSH_CHARS]",
+            "No flush.log yet (fresh install). Will populate after first SessionEnd.",
         )
-    if skip_rate > 0.3:
+
+    try:
+        stats = _parse_flush_log_events()
+    except OSError as exc:
+        return CheckResult("flush_quality_coverage", False, f"Could not read flush.log: {exc}")
+
+    spawned_chars = int(stats["spawned_chars"])
+    skip_only_chars = int(stats["skip_only_chars"])
+    attempted_chars = spawned_chars + skip_only_chars
+    if attempted_chars == 0:
         return CheckResult(
-            "flush_capture_health",
+            "flush_quality_coverage",
             True,
-            f"{detail} [info: moderate skip rate]",
+            f"No size-qualified capture candidates in last {CAPTURE_HEALTH_WINDOW_DAYS} days",
         )
-    return CheckResult("flush_capture_health", True, detail)
+
+    quality_ratio = spawned_chars / attempted_chars
+    detail = (
+        f"Last {CAPTURE_HEALTH_WINDOW_DAYS}d: {spawned_chars}/{attempted_chars} chars reached flush.py "
+        f"(coverage {quality_ratio:.1%})"
+    )
+    if quality_ratio < 0.70:
+        return CheckResult(
+            "flush_quality_coverage",
+            True,
+            f"{detail} [attention: significant content filtered before flush.py]",
+        )
+    if quality_ratio < 0.85:
+        return CheckResult(
+            "flush_quality_coverage",
+            True,
+            f"{detail} [info: moderate content filtered before flush.py]",
+        )
+    return CheckResult("flush_quality_coverage", True, detail)
+
+
+def check_flush_pipeline_correctness() -> CheckResult:
+    if not FLUSH_LOG.exists():
+        return CheckResult(
+            "flush_pipeline_correctness",
+            True,
+            "No flush.log yet (fresh install). Will populate after first SessionEnd.",
+        )
+
+    try:
+        stats = _parse_flush_log_events()
+    except OSError as exc:
+        return CheckResult("flush_pipeline_correctness", False, f"Could not read flush.log: {exc}")
+
+    fatal_errors_7d = int(stats["fatal_errors"])
+    fatal_errors_24h = int(stats["fatal_errors_24h"])
+    latest_fatal_ts = stats["latest_fatal_ts"]
+    if fatal_errors_7d == 0:
+        return CheckResult(
+            "flush_pipeline_correctness",
+            True,
+            f"No 'Fatal error in message reader' events in last {CAPTURE_HEALTH_WINDOW_DAYS} days",
+        )
+
+    latest_detail = (
+        latest_fatal_ts.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(latest_fatal_ts, datetime)
+        else "unknown"
+    )
+    if fatal_errors_24h == 0:
+        return CheckResult(
+            "flush_pipeline_correctness",
+            True,
+            f"No 'Fatal error in message reader' events in last 24h "
+            f"(historical: {fatal_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d, "
+            f"most recent {latest_detail}, tracked in issue #16)",
+        )
+
+    return CheckResult(
+        "flush_pipeline_correctness",
+        False,
+        f"Last 24h: {fatal_errors_24h} 'Fatal error in message reader' events "
+        f"(7d total: {fatal_errors_7d}, most recent {latest_detail}) "
+        f"— active Bug H regression, investigate issue #16",
+    )
 
 
 def check_total_tokens_injection() -> CheckResult:
@@ -653,7 +768,9 @@ def get_quick_checks() -> list[CheckResult]:
     return [
         check_wiki_structure(),
         check_env_settings(),
-        check_flush_capture_health(),
+        check_flush_throughput(),
+        check_flush_quality_coverage(),
+        check_flush_pipeline_correctness(),
         check_python(),
         check_uv(),
         check_index_health(),
@@ -671,7 +788,9 @@ def get_full_checks() -> list[CheckResult]:
     return [
         check_wiki_structure(),
         check_env_settings(),
-        check_flush_capture_health(),
+        check_flush_throughput(),
+        check_flush_quality_coverage(),
+        check_flush_pipeline_correctness(),
         check_python(),
         check_uv(),
         check_runtime_mode(),
