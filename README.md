@@ -68,7 +68,7 @@ Wiki Status:
 
 Obsidian graph view of the same wiki after real project use:
 
-![Obsidian graph view of the wiki](raw/assets/readme-obsidian-graph.png)
+![Obsidian graph view of the wiki](docs/assets/readme-obsidian-graph.jpg)
 
 ### Health checks
 
