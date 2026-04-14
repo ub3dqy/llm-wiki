@@ -1,39 +1,97 @@
 # LLM Wiki — Persistent Memory for Claude Code & Codex CLI
 
-Claude Code and Codex CLI **forget everything when a session ends.** Every morning you re-explain the same architecture decisions, the same gotchas, the same *"why we chose X over Y"*. This repository gives them persistent memory that survives across sessions, projects, machines, and IDEs.
+Claude Code and Codex CLI **forget almost everything when a session ends**. This project gives them a shared, durable memory layer: a markdown wiki that captures useful session knowledge automatically, files it into `daily/`, compiles it into longer-lived articles, and injects relevant context back into future prompts.
+
+It is built for people who want persistent agent memory **without** adding a vector database, embeddings pipeline, or another always-on service. The whole system lives in plain markdown, works with git, and opens cleanly in Obsidian.
 
 Built on prior work: [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern and [`coleam00/claude-memory-compiler`](https://github.com/coleam00/claude-memory-compiler) — see [Credits](#credits) for full attribution.
 
-## Why you'll want this
+## Why this is useful
 
-If you use Claude Code or Codex daily on non-trivial projects, you probably have these frustrations:
+If you use Claude Code or Codex daily on non-trivial projects, you have probably hit some version of this:
 
-- Every new session starts with Claude not knowing your codebase conventions, and you re-explain them
-- Important reasoning from yesterday's debugging session is lost — only the final diff survives in git
-- You already tried stuffing everything into `CLAUDE.md`, but it grew unmaintainable and still missed the nuance
-- You looked at vector-database memory solutions (mem0, Letta) and decided that running Qdrant for personal dev work is too much infrastructure
+- every new session starts with the agent forgetting your conventions and tradeoffs
+- only the final diff survives, while the reasoning from yesterday's debugging session evaporates
+- `CLAUDE.md` keeps growing, but still cannot hold all the nuance
+- vector-memory setups feel like too much infrastructure for personal or small-team dev work
 
-**This project solves all four** by building a structured markdown wiki that auto-captures from your sessions:
+This project is meant to be the middle ground:
 
-- **Zero infrastructure.** No vector DB, no embeddings, no background services. Just markdown files in git and a handful of Python scripts.
-- **Automatic capture.** Hooks fire on `SessionEnd` and `PreCompact`, the transcript goes to Claude Agent SDK, and it decides what's worth saving. No manual note-taking.
-- **Targeted retrieval.** Before every prompt, a fast keyword search across the wiki injects 3–5 relevant articles into context. Token cost: a couple thousand, not two hundred thousand.
-- **Works with Claude Code *and* Codex.** Same wiki, both hook systems. Switch CLIs without losing memory.
-- **Obsidian-compatible.** Everything is plain markdown with `[[wikilinks]]` — open `wiki/` in Obsidian for graph browsing.
-- **One-command bootstrap.** Four commands from fresh clone to a working system.
+- **Automatic capture.** Session knowledge is captured on hooks and written to `daily/` without manual note-taking.
+- **Targeted retrieval.** Relevant wiki pages get injected into prompts instead of dumping your whole knowledge base into context.
+- **Claude + Codex support.** One wiki, two agent environments.
+- **Plain markdown.** Everything is inspectable, editable, and git-committable.
+- **Obsidian-friendly.** `[[wikilinks]]`, graph browsing, and zero proprietary storage.
 
-### From clone to working in 4 commands
+## From clone to working in 4 commands
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/llm-wiki.git
+git clone https://github.com/ub3dqy/llm-wiki.git
 cd llm-wiki
 uv sync
-uv run python scripts/setup.py            # creates wiki/, .env, local configs
+uv run python scripts/setup.py
 ```
 
-Then verify the install with `uv run python scripts/doctor.py --quick` — all 13 checks should be green. After that, follow the `Next steps` printed by `setup.py` to wire hooks into `~/.claude/settings.json` (and optionally `~/.codex/hooks.json`).
+Then run:
 
-### Who this is for
+```bash
+uv run python scripts/doctor.py --quick
+```
+
+That gives you a fast health snapshot of the install and points at anything still missing or miswired.
+
+## How the memory loop works
+
+```mermaid
+flowchart LR
+    A[Claude Code or Codex session] --> B[Hooks capture context]
+    B --> C[daily/YYYY-MM-DD.md]
+    C --> D[compile.py]
+    D --> E[wiki/concepts + wiki/connections]
+    E --> F[UserPromptSubmit / SessionStart]
+    F --> G[Relevant wiki context injected back into future sessions]
+```
+
+### Live snapshot
+
+This is a real `wiki_cli status` snapshot from the repo during active use:
+
+```text
+Wiki Status:
+  Articles: 97 (analyses: 2, concepts: 38, connections: 3, entities: 2, sources: 51, top-level: 1)
+  Projects: memory-claude (55), messenger (21), office (13), personal (8), untagged (2)
+  Daily logs: 5 (today: 21 entries)
+  Last compile: 2026-04-14T12:06:42+00:00
+  Last lint: 2026-04-14T12:40:19+00:00
+  Total cost: $8.81
+```
+
+Obsidian graph view of the same wiki after real project use:
+
+![Obsidian graph view of the wiki](raw/assets/readme-obsidian-graph.png)
+
+### Health checks
+
+The repo ships with a real health gate instead of just installation instructions. Example checks from `doctor --full`:
+
+```text
+[PASS] flush_throughput: Last 7d: 74/172 flushes spawned (skip rate 57%)
+[PASS] flush_quality_coverage: Last 7d: 1558410/1561277 chars reached flush.py (coverage 99.8%)
+[PASS] query_preview_smoke: Query preview returned provenance-aware candidates
+[PASS] wiki_cli_lint_smoke: wiki_cli structural lint reported zero blocking errors
+[PASS] flush_roundtrip: session-end -> flush.py chain completed in test mode
+```
+
+That makes it much easier to trust the system after hook changes, environment drift, or agent updates.
+
+In other words:
+
+1. you work normally in Claude Code or Codex
+2. useful context gets captured into a daily log
+3. later it is compiled into wiki articles
+4. future sessions get the relevant parts back instead of starting from zero
+
+## Who this is for
 
 - Developers who use Claude Code or Codex CLI **daily** on real projects
 - People who want durable memory **across all projects**, not one `CLAUDE.md` per repo
@@ -82,20 +140,6 @@ The repository also ships with:
 - [SECURITY.md](SECURITY.md)
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
-## Maintainer checklist for GitHub
-
-To make the public repository discoverable and active instead of passive, enable and fill in these GitHub settings:
-
-1. About section:
-   - short description
-   - homepage/demo/docs link
-   - topics such as `claude-code`, `codex`, `llm-memory`, `agent-memory`, `knowledge-base`
-2. Social preview image
-3. GitHub Discussions
-4. Private vulnerability reporting
-5. Labels such as `bug`, `documentation`, `installation`, `feedback`, `enhancement`, `good first issue`, `help wanted`
-6. Releases with changelog notes
-
 ## What makes this different
 
 Row-by-row comparison against the direct functional ancestor, `coleam00/claude-memory-compiler` — the features that were added on top in this fork:
@@ -118,30 +162,9 @@ Row-by-row comparison against the direct functional ancestor, `coleam00/claude-m
 | Provenance | `sources` only | **`confidence` labels + `## Provenance`** for compile-generated articles |
 | Query confidence | None | **Query preview + provenance-aware answer guidance** |
 
-## How it works
+## Hook flow
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Any Claude Code Session                    │
-│                  (CLI, VS Code, JetBrains)                   │
-└──────┬──────────────────┬───────────────────┬───────────────┘
-       │                  │                   │
-  SessionStart      UserPromptSubmit     SessionEnd/PreCompact
-       │                  │                   │
-  Inject wiki        Find relevant       Extract transcript
-  index + project    articles by         → flush.py
-  context            keywords            → Agent SDK evaluates
-       │                  │                   │
-       │             Inject article      Worth saving?
-       │             content into        → daily/YYYY-MM-DD.md
-       │             current prompt           │
-       │                                 Auto-compile (18:00)
-       │                                 → wiki/concepts/
-       │                                 → wiki/connections/
-       ▼                                      │
-  Claude answers                              ▼
-  using wiki knowledge ◄──────────── Knowledge persists
-```
+The diagram above is the high-level loop. In practice, six hooks keep the memory layer alive:
 
 ### Six hooks power the system
 
@@ -154,7 +177,9 @@ Row-by-row comparison against the direct functional ancestor, `coleam00/claude-m
 | **PostToolUse** | After Bash commands (async) | Captures git commits, test runs as micro-entries |
 | **Stop** | After each Claude response | Reminds about `/wiki-save` when architectural decisions detected |
 
-## Quick Start
+## Installation details
+
+If you want the full setup instead of the 4-command quick start above, use the detailed install flow below.
 
 ### Prerequisites
 
@@ -167,7 +192,7 @@ Row-by-row comparison against the direct functional ancestor, `coleam00/claude-m
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/llm-wiki.git
+git clone https://github.com/ub3dqy/llm-wiki.git
 cd llm-wiki
 
 # 2. Install Python dependencies
@@ -292,7 +317,7 @@ Keep these three roles separate:
 
 ### Repo-level instructions for Codex
 
-This repository now ships with [`AGENTS.md`](AGENTS.md). Codex can use it as project-level guidance, while the full wiki schema remains in [`CLAUDE.md`](CLAUDE.md).
+This repository ships with [`AGENTS.md`](AGENTS.md) for project-level guidance, while the full wiki schema and workflow rules live in [`CLAUDE.md`](CLAUDE.md).
 
 ## Usage
 
