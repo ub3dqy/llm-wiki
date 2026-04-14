@@ -1,5 +1,12 @@
 # LLM Wiki — Persistent Memory for Claude Code & Codex CLI
 
+[![wiki-lint](https://github.com/ub3dqy/llm-wiki/actions/workflows/wiki-lint.yml/badge.svg)](https://github.com/ub3dqy/llm-wiki/actions/workflows/wiki-lint.yml)
+[![personal-data-check](https://github.com/ub3dqy/llm-wiki/actions/workflows/personal-data-check.yml/badge.svg)](https://github.com/ub3dqy/llm-wiki/actions/workflows/personal-data-check.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-supported-8A2BE2)](https://claude.com/claude-code)
+[![Codex CLI](https://img.shields.io/badge/Codex%20CLI-supported-000000)](https://developers.openai.com/codex/cli)
+
 Claude Code and Codex CLI **forget almost everything when a session ends**. This project gives them a shared, durable memory layer: a markdown wiki that captures useful session knowledge automatically, files it into `daily/`, compiles it into longer-lived articles, and injects relevant context back into future prompts.
 
 It is built for people who want persistent agent memory **without** adding a vector database, embeddings pipeline, or another always-on service. The whole system lives in plain markdown, works with git, and opens cleanly in Obsidian.
@@ -181,6 +188,9 @@ The diagram above is the high-level loop. In practice, six hooks keep the memory
 
 If you want the full setup instead of the 4-command quick start above, use the detailed install flow below.
 
+<details>
+<summary><b>Full installation, configuration, and Codex CLI setup</b> (click to expand)</summary>
+
 ### Prerequisites
 
 - [Claude Code](https://claude.ai/code) (CLI or IDE extension)
@@ -319,6 +329,8 @@ Keep these three roles separate:
 
 This repository ships with [`AGENTS.md`](AGENTS.md) for project-level guidance, while the full wiki schema and workflow rules live in [`CLAUDE.md`](CLAUDE.md).
 
+</details>
+
 ## Usage
 
 ### Automatic (hooks do everything)
@@ -370,6 +382,9 @@ uv run python scripts/wiki_cli.py seed "/path/to/project"
 Instantly creates or updates a wiki article from the current conversation. Works from any project.
 
 ## Project Structure
+
+<details>
+<summary><b>Full directory layout</b> (click to expand)</summary>
 
 ```
 .
@@ -440,6 +455,8 @@ Instantly creates or updates a wiki article from the current conversation. Works
 - `.env` — local configuration overrides
 - `scripts/project_aliases.local.json` — local project alias overrides
 
+</details>
+
 ## Key Design Decisions
 
 ### Why not RAG/embeddings?
@@ -480,6 +497,9 @@ Without limits, closing multiple sessions simultaneously spawns hundreds of node
 | 2000+ | Hybrid RAG (embeddings + index) | Future |
 
 ## Maintenance Checklist
+
+<details>
+<summary><b>Post-update routines for Codex CLI and Claude Code</b> (click to expand)</summary>
 
 ### After updating Codex CLI
 
@@ -527,6 +547,8 @@ That route is advisory, not blocking. The full route uses the project dependency
 environment so Agent SDK checks can run even if your current shell Python is
 lightweight. In WSL, the contradiction step may delegate to the Windows `uv`
 runtime to keep the result consistent with the main project environment.
+
+</details>
 
 ## Credits
 
