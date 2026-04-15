@@ -30,6 +30,9 @@ jobs:
       - name: Run structural lint
         run: uv run python scripts/lint.py --structural-only
 
+      - name: Ruff check (I rule)
+        run: uv run ruff check --select I scripts/ hooks/
+
       - name: Syntax check all Python files
         run: |
           uv run python -c "
