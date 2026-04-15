@@ -264,6 +264,17 @@ Codex hooks are currently run from WSL in this repo. Keep the hook commands on
 Linux-style paths and use an isolated WSL `uv` environment so the repo's
 Windows `.venv` is never rewritten by Linux.
 
+> [!warning]
+> **Launch `codex` as a standalone CLI from a plain WSL shell**, not through the VSCode Codex extension's Remote-WSL integration. Recent extension builds can pass a malformed `cwd` to spawned hook processes, silently failing every `SessionStart`/`Stop`/`UserPromptSubmit` hook while the UI still shows normal agent responses. A clean launch looks like:
+>
+> ```bash
+> # Win+R → wsl   (or Windows Terminal → Ubuntu tab)
+> cd /mnt/<drive>/<your>/<project>
+> codex
+> ```
+>
+> In this mode the hook chain runs with the correct `cwd`, and your capture pipeline writes the expected entries into `scripts/flush.log`.
+
 1. Enable hooks in `~/.codex/config.toml`:
 
 ```toml
