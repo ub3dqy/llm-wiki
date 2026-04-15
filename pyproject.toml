@@ -9,5 +9,11 @@ dependencies = [
     "tzdata>=2026.1",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15",
+    "pytest>=9.0",
+]
+
 [tool.ruff]
 line-length = 100
