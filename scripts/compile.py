@@ -17,8 +17,23 @@ os.environ["CLAUDE_INVOKED_BY"] = "compile"
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import CONCEPTS_DIR, CONNECTIONS_DIR, INDEX_FILE, LOG_FILE, SCHEMA_FILE, WIKI_DIR, now_iso
-from utils import file_hash, list_daily_logs, list_wiki_articles, load_state, read_wiki_index, save_state
+from config import (
+    CONCEPTS_DIR,
+    CONNECTIONS_DIR,
+    INDEX_FILE,
+    LOG_FILE,
+    SCHEMA_FILE,
+    WIKI_DIR,
+    now_iso,
+)
+from utils import (
+    file_hash,
+    list_daily_logs,
+    list_wiki_articles,
+    load_state,
+    read_wiki_index,
+    save_state,
+)
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 

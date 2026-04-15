@@ -18,7 +18,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from config import WIKI_TIMEZONE  # noqa: E402
-
 from hook_utils import infer_project_name_from_cwd, parse_frontmatter
 
 ROOT = Path(__file__).resolve().parent.parent

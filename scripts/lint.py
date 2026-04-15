@@ -342,7 +342,7 @@ def check_provenance_completeness() -> list[dict]:
 
 async def check_contradictions() -> list[dict]:
     """Use LLM to detect contradictions across articles."""
-    from claude_agent_sdk import ClaudeAgentOptions, AssistantMessage, TextBlock, query
+    from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
     wiki_content = read_all_wiki_content()
 

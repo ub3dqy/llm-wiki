@@ -17,3 +17,12 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+"hooks/hook_utils.py" = ["I"]
+"hooks/pre-compact.py" = ["I"]
+"hooks/session-end.py" = ["I"]
