@@ -104,7 +104,7 @@ to create a new article or update an existing one. Use Grep to find related arti
 2. **Check existing articles** — Read any related articles from the index before writing.
    Use Grep to search for related terms across wiki/
 3. **Create concept articles** in `wiki/concepts/` — one .md file per concept
-   - Use YAML frontmatter: title, type (concept), created, updated, sources, confidence, project, tags
+   - Use YAML frontmatter: title, type (concept), created, updated, sources, confidence, status, project, tags
    - Use `[[wikilinks]]` for cross-references (e.g. `[[concepts/prisma-migrations]]`)
    - Write in encyclopedia style — neutral, comprehensive
 4. **Create connection articles** in `wiki/connections/` if the log reveals non-obvious
@@ -133,6 +133,7 @@ to create a new article or update an existing one. Use Grep to find related arti
   - `extracted` — directly supported by the daily log
   - `inferred` — synthesized from multiple statements in the log
   - `to-verify` — plausible but uncertain, ambiguous, or dependent on incomplete context
+- `status:` should be set to `active` for every newly created compile-generated concept/connection
 - Add a `## Provenance` section to every newly created compile-generated article:
   - `- Source log: daily/{{log_path.name}}`
   - `- Confidence: <value> — short reason`

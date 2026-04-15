@@ -129,6 +129,9 @@ def get_recent_changes() -> list[dict]:
         if updated_date and updated_date >= cutoff:
             status = "NEW" if (created_date and created_date == updated_date) else "UPDATED"
             results.append({"slug": slug, "status": status, "date": updated_str})
+            freshness_status = (fm.get("status", "active") or "active").lower()
+            if freshness_status != "active":
+                results[-1]["freshness"] = freshness_status
 
     return sorted(results, key=lambda x: x["date"], reverse=True)[:MAX_RECENT_CHANGES]
 
@@ -139,7 +142,8 @@ def format_recent_changes(changes: list[dict]) -> str:
         return ""
     lines = ["## Recent Wiki Changes (last 48h)\n"]
     for ch in changes:
-        lines.append(f"- {ch['status']}: [[{ch['slug']}]] ({ch['date']})")
+        suffix = f" ⚠ {ch['freshness']}" if "freshness" in ch else ""
+        lines.append(f"- {ch['status']}: [[{ch['slug']}]] ({ch['date']}){suffix}")
     return "\n".join(lines)
 
 

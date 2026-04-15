@@ -83,7 +83,16 @@ def score_query_candidate(path: Path, tokens: set[str]) -> int:
             score += 4
         if token in body_text:
             score += 2
-    return score
+
+    status = (fm.get("status", "active") or "active").lower()
+    freshness_factor = {
+        "active": 1.0,
+        "stale": 0.7,
+        "superseded": 0.3,
+        "archived": 0.05,
+    }.get(status, 1.0)
+
+    return int(score * freshness_factor)
 
 
 def build_query_candidates(question: str, limit: int = MAX_QUERY_CANDIDATES) -> list[dict[str, str | int]]:

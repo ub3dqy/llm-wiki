@@ -15,8 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import REPORTS_DIR, WIKI_DIR, now_iso, today_iso
 from runtime_utils import find_uv, is_wsl
 from utils import (
-    content_has_wikilink_target,
-    count_inbound_links,
     extract_wikilinks,
     file_hash,
     frontmatter_sources_include_prefix,
@@ -34,6 +32,65 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 ADVISORY_BANNER = (
     "[ADVISORY] Contradiction check results are non-deterministic and must not be used as a merge gate."
 )
+
+_ARTICLE_LIST_CACHE: list[Path] | None = None
+_ARTICLE_TEXT_CACHE: dict[Path, str] = {}
+_ARTICLE_FRONTMATTER_CACHE: dict[Path, dict[str, str]] = {}
+_ARTICLE_WIKILINKS_CACHE: dict[Path, list[str]] = {}
+_ARTICLE_WORD_COUNT_CACHE: dict[Path, int] = {}
+_INBOUND_LINK_COUNT_CACHE: dict[str, int] | None = None
+
+
+def _wiki_articles() -> list[Path]:
+    global _ARTICLE_LIST_CACHE
+    if _ARTICLE_LIST_CACHE is None:
+        _ARTICLE_LIST_CACHE = list_wiki_articles()
+    return _ARTICLE_LIST_CACHE
+
+
+def _article_text(path: Path) -> str:
+    text = _ARTICLE_TEXT_CACHE.get(path)
+    if text is None:
+        text = path.read_text(encoding="utf-8")
+        _ARTICLE_TEXT_CACHE[path] = text
+    return text
+
+
+def _article_frontmatter(path: Path) -> dict[str, str]:
+    fm = _ARTICLE_FRONTMATTER_CACHE.get(path)
+    if fm is None:
+        fm = parse_frontmatter(path)
+        _ARTICLE_FRONTMATTER_CACHE[path] = fm
+    return fm
+
+
+def _article_wikilinks(path: Path) -> list[str]:
+    links = _ARTICLE_WIKILINKS_CACHE.get(path)
+    if links is None:
+        links = extract_wikilinks(_article_text(path))
+        _ARTICLE_WIKILINKS_CACHE[path] = links
+    return links
+
+
+def _article_word_count(path: Path) -> int:
+    word_count = _ARTICLE_WORD_COUNT_CACHE.get(path)
+    if word_count is None:
+        word_count = get_article_word_count(path)
+        _ARTICLE_WORD_COUNT_CACHE[path] = word_count
+    return word_count
+
+
+def _inbound_link_counts() -> dict[str, int]:
+    global _INBOUND_LINK_COUNT_CACHE
+    if _INBOUND_LINK_COUNT_CACHE is None:
+        counts: dict[str, int] = {}
+        for article in _wiki_articles():
+            for link in _article_wikilinks(article):
+                if link.startswith("daily/"):
+                    continue
+                counts[link] = counts.get(link, 0) + 1
+        _INBOUND_LINK_COUNT_CACHE = counts
+    return _INBOUND_LINK_COUNT_CACHE
 
 
 def to_windows_path(path: Path) -> str | None:
@@ -68,10 +125,9 @@ def has_claude_agent_sdk() -> bool:
 def check_broken_links() -> list[dict]:
     """Check for [[wikilinks]] that point to non-existent articles."""
     issues: list[dict] = []
-    for article in list_wiki_articles():
-        content = article.read_text(encoding="utf-8")
+    for article in _wiki_articles():
         rel = article.relative_to(WIKI_DIR)
-        for link in extract_wikilinks(content):
+        for link in _article_wikilinks(article):
             if link.startswith("daily/"):
                 continue
             if not wiki_article_exists(link):
@@ -87,10 +143,11 @@ def check_broken_links() -> list[dict]:
 def check_orphan_pages() -> list[dict]:
     """Check for articles with zero inbound links."""
     issues: list[dict] = []
-    for article in list_wiki_articles():
+    inbound_counts = _inbound_link_counts()
+    for article in _wiki_articles():
         rel = article.relative_to(WIKI_DIR)
         link_target = str(rel).replace(".md", "").replace("\\", "/")
-        inbound = count_inbound_links(link_target)
+        inbound = inbound_counts.get(link_target, 0)
         if inbound == 0:
             issues.append({
                 "severity": "warning",
@@ -137,21 +194,83 @@ def check_stale_articles() -> list[dict]:
     return issues
 
 
+def check_freshness_review_debt() -> list[dict]:
+    """Advisory: flag concept/source pages overdue for human review."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    concept_max_age = 180
+    source_max_age = 60
+
+    issues: list[dict] = []
+    for article in _wiki_articles():
+        rel = article.relative_to(WIKI_DIR)
+        rel_str = str(rel).replace("\\", "/")
+        if not (rel_str.startswith("concepts/") or rel_str.startswith("sources/")):
+            continue
+
+        fm = _article_frontmatter(article)
+        status = (fm.get("status", "active") or "active").lower()
+        if status == "archived":
+            continue
+
+        if status == "superseded" and not fm.get("superseded_by"):
+            issues.append({
+                "severity": "warning",
+                "check": "freshness_superseded_without_link",
+                "file": rel_str,
+                "detail": f"{rel_str}: status=superseded but no superseded_by wikilink",
+            })
+            continue
+
+        reviewed_str = fm.get("reviewed", "")
+        max_age = source_max_age if rel_str.startswith("sources/") else concept_max_age
+
+        if not reviewed_str:
+            issues.append({
+                "severity": "suggestion",
+                "check": "freshness_never_reviewed",
+                "file": rel_str,
+                "detail": f"{rel_str}: no 'reviewed' field — consider adding review date",
+            })
+            continue
+
+        try:
+            reviewed_date = date.fromisoformat(str(reviewed_str))
+        except (TypeError, ValueError):
+            issues.append({
+                "severity": "warning",
+                "check": "freshness_malformed_reviewed",
+                "file": rel_str,
+                "detail": f"{rel_str}: 'reviewed' field not valid ISO date (got {reviewed_str!r})",
+            })
+            continue
+
+        age = (today - reviewed_date).days
+        if today - reviewed_date > timedelta(days=max_age):
+            issues.append({
+                "severity": "suggestion",
+                "check": "freshness_review_overdue",
+                "file": rel_str,
+                "detail": f"{rel_str}: last reviewed {age} days ago (max {max_age} for {rel.parts[0]}/)",
+            })
+
+    return issues
+
+
 def check_missing_backlinks() -> list[dict]:
     """Check for asymmetric links: A→B but B doesn't link back to A."""
     issues: list[dict] = []
-    for article in list_wiki_articles():
-        content = article.read_text(encoding="utf-8")
+    for article in _wiki_articles():
         rel = article.relative_to(WIKI_DIR)
         source_link = str(rel).replace(".md", "").replace("\\", "/")
 
-        for link in extract_wikilinks(content):
+        for link in _article_wikilinks(article):
             if link.startswith("daily/"):
                 continue
             target_path = WIKI_DIR / f"{link}.md"
             if target_path.exists():
-                target_content = target_path.read_text(encoding="utf-8")
-                if not content_has_wikilink_target(target_content, source_link):
+                if source_link not in _article_wikilinks(target_path):
                     issues.append({
                         "severity": "suggestion",
                         "check": "missing_backlink",
@@ -165,8 +284,8 @@ def check_missing_backlinks() -> list[dict]:
 def check_sparse_articles() -> list[dict]:
     """Check for articles with fewer than 200 words."""
     issues: list[dict] = []
-    for article in list_wiki_articles():
-        word_count = get_article_word_count(article)
+    for article in _wiki_articles():
+        word_count = _article_word_count(article)
         if word_count < 200:
             rel = article.relative_to(WIKI_DIR)
             issues.append({
@@ -183,14 +302,14 @@ def check_provenance_completeness() -> list[dict]:
     allowed_confidence = {"extracted", "inferred", "to-verify"}
     issues: list[dict] = []
 
-    for article in list_wiki_articles():
-        fm = parse_frontmatter(article)
+    for article in _wiki_articles():
+        fm = _article_frontmatter(article)
         page_type = fm.get("type", "").strip()
         sources = fm.get("sources", "")
         if page_type not in {"concept", "connection"}:
             continue
 
-        content = article.read_text(encoding="utf-8")
+        content = _article_text(article)
         rel = article.relative_to(WIKI_DIR)
         confidence = fm.get("confidence", "").strip()
 
@@ -498,6 +617,7 @@ def main() -> int:
         ("Orphan pages", check_orphan_pages),
         ("Orphan sources", check_orphan_sources),
         ("Stale articles", check_stale_articles),
+        ("Freshness review debt", check_freshness_review_debt),
         ("Missing backlinks", check_missing_backlinks),
         ("Sparse articles", check_sparse_articles),
         ("Provenance completeness", check_provenance_completeness),

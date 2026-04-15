@@ -250,7 +250,15 @@ def score_article(path: Path, keywords: set[str], phrases: set[str], project_nam
         except ValueError:
             pass
 
-    return score
+    status = (fm.get("status", "active") or "active").lower()
+    freshness_factor = {
+        "active": 1.0,
+        "stale": 0.7,
+        "superseded": 0.3,
+        "archived": 0.05,
+    }.get(status, 1.0)
+
+    return int(score * freshness_factor)
 
 
 def find_relevant_articles(
@@ -296,12 +304,21 @@ def format_matched_articles(
         content = path.read_text(encoding="utf-8")
         rel = path.relative_to(base_dir)
         slug = str(rel).replace("\\", "/").replace(".md", "")
+        fm = parse_frontmatter(path)
+        status = (fm.get("status", "active") or "active").lower()
+        status_marker = ""
+        if status == "superseded":
+            status_marker = "[SUPERSEDED — historical context only] "
+        elif status == "stale":
+            status_marker = "[STALE — verify before acting] "
+        elif status == "archived":
+            status_marker = "[ARCHIVED — do not use as current guidance] "
 
         # Cap per-article size
         if len(content) > PER_ARTICLE_CHAR_CAP:
             content = content[:PER_ARTICLE_CHAR_CAP] + "\n\n...(truncated)"
 
-        entry = f"### [[{slug}]] (score: {score})\n\n{content}"
+        entry = f"### {status_marker}[[{slug}]] (score: {score})\n\n{content}"
 
         if total_chars + len(entry) > MAX_CONTEXT_CHARS:
             break
