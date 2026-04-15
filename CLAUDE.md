@@ -81,6 +81,33 @@ Content here. Use [[wikilinks]] for cross-references to other pages.
 `confidence` is **required for all concept and connection pages**. Source/entity/analysis/qa
 pages may omit it when the field would not add useful signal.
 
+## Agent operating rules (read before any edit in this project)
+
+Non-negotiable rules for any AI agent (Claude Code, Codex, or otherwise) working in this
+repository. These exist to compensate for measured behavioral regressions in frontier coding
+models (see [[sources/claude-code-67-percent-reasoning-regression-reddit]] — 67% reasoning
+depth drop, file reads 6.6→2, ~33% edits without prior read) and to force the habits the
+tooling can no longer guarantee by default.
+
+- **Research the codebase before editing. Never change code you haven't read.** If you are
+  about to modify a file, open it first — the whole function or block you are touching, plus
+  its direct call sites. No guessing at contents based on the filename or the task description.
+- **Verify work actually works before claiming done.** Run the relevant smoke check (doctor,
+  lint, test, or explicit manual invocation) and include the real output in your report. Do
+  not write "should work" — either it does and you can show it, or you say "blocked: <reason>"
+  and stop.
+- **Non-trivial handoff plans pass through two independent review rounds, not one.** First
+  round catches design-level issues (is the approach right, does it cover the real problem).
+  Second round catches consistency issues (do all sections of the plan agree with each other
+  after revision, do acceptance criteria match verification steps, does arithmetic add up).
+  Neither round substitutes for the other — skipping the second round is the exact failure
+  mode that leaves stale references in whitelist/verification/acceptance sections after the
+  core changes were made. When revising a plan after feedback, always do a **full-document
+  walk** reading every section against the new design, not a keyword grep.
+
+These rules apply regardless of task size. "Small task, obviously safe" is the exact failure
+mode all three rules are designed to prevent.
+
 ## Conventions
 
 - **Language**: Wiki content follows the language of the source material. Meta-files (index, log) are in Russian unless the user specifies otherwise.
@@ -89,6 +116,18 @@ pages may omit it when the field would not add useful signal.
 - **Source attribution**: Every claim should be traceable to a source via the `sources` frontmatter field.
 - **Confidence labels**: all concept and connection articles should declare whether claims are
   `extracted`, `inferred`, or `to-verify`.
+- **Freshness metadata** (optional, since 2026-04-15): concept/connection/source pages may declare:
+  - `status: active | stale | superseded | archived` (default `active` if omitted)
+  - `reviewed: YYYY-MM-DD` — date of most recent **manual human review** of the claim's current relevance.
+    This field is **only** set by a human reading the page and explicitly confirming it is still current.
+    Automatic processes (`compile.py`, source-drift checks, etc) **must not** write to `reviewed`.
+    Pages without `reviewed` are treated as never-reviewed by lint advisory.
+  - `superseded_by: [[other-page]]` — wikilink to replacement if status is `superseded`
+
+  Freshness is a **temporal axis** (when was this last checked) and is **orthogonal** to `confidence` which is
+  the **epistemic axis** (how confident are we in the claim's accuracy). A page can be `confidence: extracted`
+  (high factual confidence) and `status: stale` (world changed, claim no longer current) simultaneously.
+  These fields are **advisory-only** at lint time; they affect retrieval ranking but do not block merges.
 - **Provenance section**: all concept and connection articles should include a short
   `## Provenance` section that explains what was directly observed in the source material and
   what was inferred.
