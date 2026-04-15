@@ -23,9 +23,9 @@ from pathlib import Path
 # Add scripts/ to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import DAILY_DIR, REPORTS_DIR, WIKI_DIR, ROOT_DIR, STATE_FILE
+from config import DAILY_DIR, REPORTS_DIR, ROOT_DIR, STATE_FILE, WIKI_DIR
 from runtime_utils import find_uv
-from utils import list_daily_logs, list_wiki_articles, build_article_metadata_map
+from utils import build_article_metadata_map, list_daily_logs, list_wiki_articles
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 

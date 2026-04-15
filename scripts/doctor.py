@@ -287,6 +287,7 @@ def check_total_tokens_injection() -> CheckResult:
     """Probe whether Anthropic's <total_tokens> injection is active on this account."""
     try:
         import asyncio
+
         from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
     except ImportError:
         return CheckResult("total_tokens_injection", True, "claude_agent_sdk not available, skipping")

@@ -10,7 +10,7 @@ from pathlib import Path
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import QA_DIR, INDEX_FILE, LOG_FILE, WIKI_DIR, now_iso
+from config import INDEX_FILE, LOG_FILE, QA_DIR, WIKI_DIR, now_iso
 from utils import list_wiki_articles, load_state, parse_frontmatter, read_wiki_index, save_state
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
