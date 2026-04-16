@@ -8,12 +8,18 @@ import importlib.util
 import json
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
+from collections import defaultdict
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import REPORTS_DIR, WIKI_DIR, now_iso, today_iso
+from config import REPORTS_DIR, SOURCES_DIR, WIKI_DIR, now_iso, today_iso
 from runtime_utils import find_uv, is_wsl
 from utils import (
     extract_wikilinks,
@@ -23,6 +29,7 @@ from utils import (
     list_wiki_articles,
     load_state,
     parse_frontmatter,
+    parse_frontmatter_list,
     read_all_wiki_content,
     save_state,
     wiki_article_exists,
@@ -269,6 +276,231 @@ def check_freshness_review_debt() -> list[dict]:
                 }
             )
 
+    return issues
+
+
+def _extract_source_urls(article: Path) -> list[str]:
+    """Extract HTTP source URLs from frontmatter.
+
+    Supports both inline `sources: [a, b]` and multiline YAML list form.
+    """
+    text = _article_text(article)
+    if not text.startswith("---"):
+        return []
+
+    lines = text.splitlines()
+    urls: list[str] = []
+    idx = 1
+
+    while idx < len(lines):
+        line = lines[idx]
+        if line.strip() == "---":
+            break
+
+        if line.startswith("sources:"):
+            raw_value = line.split(":", 1)[1].strip()
+            if raw_value:
+                candidates = parse_frontmatter_list(raw_value)
+                return [item for item in candidates if item.startswith(("http://", "https://"))]
+
+            idx += 1
+            while idx < len(lines):
+                subline = lines[idx]
+                if subline.strip() == "---":
+                    break
+                if not subline.startswith("  - "):
+                    break
+                item = subline[4:].strip().strip("'\"")
+                if item.startswith(("http://", "https://")):
+                    urls.append(item)
+                idx += 1
+            return urls
+
+        idx += 1
+
+    return []
+
+
+def _parse_http_datetime(value: str) -> object | None:
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
+
+def _domain_key(url: str) -> str:
+    parts = urlsplit(url)
+    return (parts.netloc or parts.path).lower()
+
+
+def _is_newer_last_modified(stored_value: str, current_value: str) -> bool:
+    stored_dt = _parse_http_datetime(stored_value)
+    current_dt = _parse_http_datetime(current_value)
+    if stored_dt is None or current_dt is None:
+        return bool(current_value and stored_value and current_value != stored_value)
+    return current_dt > stored_dt
+
+
+def _classify_head_200(
+    stored: dict[str, str], new_etag: str, new_last_modified: str
+) -> tuple[str, str]:
+    stored_etag = str(stored.get("etag", "") or "")
+    stored_last_modified = str(stored.get("last_modified", "") or "")
+
+    if stored_etag and new_etag:
+        if new_etag != stored_etag:
+            return "drift", f"ETag changed (stored: {stored_etag!r}, current: {new_etag!r})"
+        return "no_drift", "ETag unchanged"
+
+    if stored_last_modified and new_last_modified:
+        if _is_newer_last_modified(stored_last_modified, new_last_modified):
+            return (
+                "drift",
+                f"Last-Modified changed (stored: {stored_last_modified!r}, current: {new_last_modified!r})",
+            )
+        return "no_drift", "Last-Modified unchanged"
+
+    if new_etag or new_last_modified:
+        return "unverifiable", "validators available but no stored baseline to compare"
+
+    return "unverifiable", "response omitted ETag and Last-Modified"
+
+
+def _check_source_url(
+    url: str,
+    stored: dict[str, str],
+    *,
+    timeout: float,
+) -> tuple[str, str, dict[str, str]]:
+    """Check one URL using HEAD + conditional validators.
+
+    Returns (classification, detail, updated_state_entry).
+    """
+    headers = {"User-Agent": "llm-wiki-source-drift/1.0"}
+    if stored.get("etag"):
+        headers["If-None-Match"] = str(stored["etag"])
+    if stored.get("last_modified"):
+        headers["If-Modified-Since"] = str(stored["last_modified"])
+
+    request = urllib.request.Request(url, method="HEAD", headers=headers)
+    entry = {
+        "etag": str(stored.get("etag", "") or ""),
+        "last_modified": str(stored.get("last_modified", "") or ""),
+        "last_checked": today_iso(),
+        "last_status": str(stored.get("last_status", "") or ""),
+    }
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            new_etag = str(response.headers.get("ETag", "") or "")
+            new_last_modified = str(response.headers.get("Last-Modified", "") or "")
+
+        if not entry["etag"] and not entry["last_modified"]:
+            entry["etag"] = new_etag
+            entry["last_modified"] = new_last_modified
+            entry["last_status"] = (
+                "baseline_captured" if (new_etag or new_last_modified) else "unverifiable"
+            )
+            detail = (
+                "captured baseline validators"
+                if (new_etag or new_last_modified)
+                else "no validators exposed"
+            )
+            return entry["last_status"], detail, entry
+
+        classification, detail = _classify_head_200(stored, new_etag, new_last_modified)
+        if new_etag:
+            entry["etag"] = new_etag
+        if new_last_modified:
+            entry["last_modified"] = new_last_modified
+        entry["last_status"] = classification
+        return classification, detail, entry
+    except urllib.error.HTTPError as exc:
+        if exc.code == 304:
+            entry["last_status"] = "no_drift"
+            return "no_drift", "304 Not Modified", entry
+        if exc.code in (404, 410):
+            entry["last_status"] = "rot"
+            return "rot", f"HTTP {exc.code}", entry
+        if exc.code == 403:
+            entry["last_status"] = "access_denied"
+            return "access_denied", "HTTP 403", entry
+        if exc.code == 429:
+            entry["last_status"] = "rate_limited"
+            return "rate_limited", "HTTP 429", entry
+        if 500 <= exc.code < 600:
+            entry["last_status"] = "server_error"
+            return "server_error", f"HTTP {exc.code}", entry
+        entry["last_status"] = "network_error"
+        return "network_error", f"HTTP {exc.code}", entry
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        entry["last_status"] = "network_error"
+        return "network_error", str(exc), entry
+
+
+def check_source_drift(timeout: float = 10.0, delay: float = 2.0) -> list[dict]:
+    """Advisory: check wiki/sources/ HTTP URLs for upstream changes.
+
+    Uses HEAD requests with RFC 9110 conditional validators. First run captures
+    baseline validators; subsequent runs report only drift and rot.
+    """
+    state = load_state()
+    cache = state.get("source_drift_validators", {})
+    if not isinstance(cache, dict):
+        cache = {}
+
+    issues: list[dict] = []
+    per_domain_last_request: dict[str, float] = defaultdict(float)
+    checked_urls: dict[str, tuple[str, str, dict[str, str]]] = {}
+
+    for article in sorted(SOURCES_DIR.glob("*.md")):
+        rel = article.relative_to(WIKI_DIR)
+        article_urls = _extract_source_urls(article)
+        if not article_urls:
+            continue
+
+        for url in article_urls:
+            if url in checked_urls:
+                classification, detail, entry = checked_urls[url]
+            else:
+                domain = _domain_key(url)
+                last_request_at = per_domain_last_request.get(domain, 0.0)
+                wait_for = delay - (time.monotonic() - last_request_at)
+                if wait_for > 0:
+                    time.sleep(wait_for)
+
+                stored = cache.get(url, {})
+                if not isinstance(stored, dict):
+                    stored = {}
+
+                classification, detail, entry = _check_source_url(url, stored, timeout=timeout)
+                per_domain_last_request[domain] = time.monotonic()
+                cache[url] = entry
+                checked_urls[url] = (classification, detail, entry)
+
+            if classification == "drift":
+                issues.append(
+                    {
+                        "severity": "suggestion",
+                        "check": "source_drift",
+                        "file": str(rel).replace("\\", "/"),
+                        "detail": f"drift: {url} — {detail}",
+                    }
+                )
+            elif classification == "rot":
+                issues.append(
+                    {
+                        "severity": "warning",
+                        "check": "source_drift",
+                        "file": str(rel).replace("\\", "/"),
+                        "detail": f"rot: {url} — {detail}",
+                    }
+                )
+
+    state["source_drift_validators"] = cache
+    save_state(state)
     return issues
 
 
@@ -625,6 +857,11 @@ def main() -> int:
         help="Run only the contradiction check",
     )
     parser.add_argument(
+        "--source-drift",
+        action="store_true",
+        help="Check wiki/sources/ URLs for upstream drift or rot (network I/O)",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print contradiction issues as JSON (for internal delegation)",
@@ -670,7 +907,16 @@ def main() -> int:
         all_issues.extend(issues)
         print(f"    Found {len(issues)} issue(s)")
 
-    if not args.structural_only:
+    if args.source_drift:
+        print("  Checking: Source drift (network)...")
+        print(
+            "  [ADVISORY] Source drift results are network-dependent and must not be used as a merge gate."
+        )
+        issues = check_source_drift()
+        all_issues.extend(issues)
+        print(f"    Found {len(issues)} issue(s)")
+        print("  Skipping: Contradictions (--source-drift explicit network check)")
+    elif not args.structural_only:
         print("  Checking: Contradictions (LLM)...")
         print(f"  {ADVISORY_BANNER}")
         issues = check_contradictions_portable()
