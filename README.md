@@ -65,12 +65,12 @@ This is a real `wiki_cli status` snapshot from the repo during active use:
 
 ```text
 Wiki Status:
-  Articles: 97 (analyses: 2, concepts: 38, connections: 3, entities: 2, sources: 51, top-level: 1)
-  Projects: memory-claude (55), messenger (21), office (13), personal (8), untagged (2)
-  Daily logs: 5 (today: 21 entries)
-  Last compile: 2026-04-14T12:06:42+00:00
-  Last lint: 2026-04-14T12:40:19+00:00
-  Total cost: $8.81
+  Articles: 158 (analyses: 3, concepts: 48, connections: 4, entities: 2, sources: 100, top-level: 1)
+  Projects: memory-claude (114), messenger (22), office (13), personal (8), untagged (3)
+  Daily logs: 7 (today: 26 entries)
+  Last compile: 2026-04-15T18:41:06+00:00
+  Last lint: 2026-04-16T07:27:29+00:00
+  Total cost: $12.87
 ```
 
 Obsidian graph view of the same wiki after real project use:
@@ -153,14 +153,14 @@ Row-by-row comparison against the direct functional ancestor, `coleam00/claude-m
 
 | Feature | coleam00 original | This project |
 |---|---|---|
-| Knowledge capture | SessionEnd only | SessionEnd + PreCompact + **PostToolUse async** (real-time) |
+| Knowledge capture | SessionEnd only | SessionEnd + PreCompact + **PostToolUse async** (real-time) + **Codex Stop capture** (detached worker → flush.py) |
 | Context injection | Full index dump at session start | **UserPromptSubmit** — per-prompt targeted article injection |
 | Project awareness | None | **Project-aware SessionStart** — reads `cwd`, shows relevant articles first |
 | Concurrency control | None (caused 400+ node.exe crash) | **File locks + debounce** (max 2 concurrent flush) |
 | Index format | Plain list | **Enriched with `[project] (Nw)` + By Project section** |
 | Scalability | Loads all articles into prompt | **Index-guided** — agent uses Read/Grep to find articles |
 | Wiki save | End-of-session only | **`/wiki-save` skill** — instant save from any project |
-| Decision capture | None | **Stop hook** — reminds to save architectural decisions |
+| Decision capture | None | **Stop hook** — Claude: reminds `/wiki-save`; Codex: full transcript capture via detached worker |
 | Project seeding | None | **`seed.py`** — bootstrap wiki from existing codebase |
 | CLI | Verbose `uv run python scripts/...` | **`wiki_cli.py`** — unified interface |
 | Recent changes | None | **Recent Wiki Changes (48h)** section in SessionStart |
@@ -182,7 +182,8 @@ The diagram above is the high-level loop. In practice, six hooks keep the memory
 | **PreCompact** | Before context compression | Same as SessionEnd (safety net) |
 | **UserPromptSubmit** | Before each prompt | Finds and injects wiki articles matching prompt keywords |
 | **PostToolUse** | After Bash commands (async) | Captures git commits, test runs as micro-entries |
-| **Stop** | After each Claude response | Reminds about `/wiki-save` when architectural decisions detected |
+| **Stop** (Claude) | After each Claude response | Reminds about `/wiki-save` when architectural decisions detected |
+| **Stop** (Codex) | After each Codex response | Transcript capture via detached worker → flush.py → daily log |
 
 ## Installation details
 
@@ -319,22 +320,26 @@ uv run python scripts/rebuild_index.py --check
 
 Keep these three roles separate:
 
-1. **Required gate (CI / pre-commit)**  
-   `uv run python scripts/doctor.py --quick` and `uv run python scripts/wiki_cli.py lint`  
-   This is the deterministic baseline and should be the only blocking merge gate.
+1. **Required gate (CI — `.github/workflows/wiki-lint.yml`)**  
+   Runs automatically on every push to master and every PR. Steps:
+   - `rebuild_index.py --check` — index freshness
+   - `lint.py --structural-only` — wiki structure (broken links, orphans, provenance)
+   - `ruff check scripts/ hooks/` — full default ruleset (E/F/I) on all Python code
+   - `ruff format --check scripts/ hooks/` — PEP 8 formatting
+   - AST syntax check on all Python files
+   
+   This is the deterministic blocking merge gate. No pre-commit framework — CI alone is sufficient and cannot be bypassed.
 
 2. **Manual pre-merge check (recommended, not blocker)**  
    `uv run python scripts/doctor.py --full`  
-   Extends the quick gate with runtime checks, hook smokes, and an
+   Extends the CI gate with runtime checks (WSL/Codex env), hook smokes, and an
    **end-to-end roundtrip test** that simulates SessionEnd with a dummy
-   transcript and verifies the full `session-end -> flush.py` chain runs
-   in test mode. Takes a few seconds. Should be run before any merge
-   that touches the hook pipeline.
+   transcript and verifies the full `session-end -> flush.py` chain.
+   Should be run before any merge that touches the hook pipeline.
 
 3. **Advisory knowledge review (non-blocker)**  
    `uv run python scripts/wiki_cli.py lint --full`  
-   This includes the expensive contradiction review. Its findings are non-deterministic
-   and must not be used as a merge gate.
+   Includes the expensive LLM contradiction review. Non-deterministic — must not block merges.
 
 ### Repo-level instructions for Codex
 
