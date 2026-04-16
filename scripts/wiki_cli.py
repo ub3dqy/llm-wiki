@@ -15,7 +15,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -24,9 +23,9 @@ from pathlib import Path
 # Add scripts/ to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import ROOT_DIR, STATE_FILE, WIKI_DIR
+from config import ROOT_DIR, WIKI_DIR
 from runtime_utils import find_uv
-from utils import build_article_metadata_map, list_daily_logs, list_wiki_articles
+from utils import build_article_metadata_map, list_daily_logs, list_wiki_articles, load_state
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
@@ -70,9 +69,7 @@ def cmd_status() -> None:
             untagged += 1
 
     # Load state
-    state: dict = {}
-    if STATE_FILE.exists():
-        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    state: dict = load_state()
 
     # Today's daily log entries
     today_entries = 0

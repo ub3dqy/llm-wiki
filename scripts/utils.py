@@ -23,16 +23,36 @@ from config import (
 
 
 def load_state() -> dict:
-    """Load the JSON state file used for dedup & cost tracking."""
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    return {}
+    """Load the JSON state file used for dedup & cost tracking.
+
+    On corrupt JSON, the existing file is moved aside to
+    ``<name>.corrupt-<UTC>`` and an empty state is returned.
+    """
+    if not STATE_FILE.exists():
+        return {}
+    raw = STATE_FILE.read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        import logging
+        from datetime import datetime, timezone
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = STATE_FILE.with_name(STATE_FILE.name + f".corrupt-{stamp}")
+        try:
+            STATE_FILE.replace(backup)
+            logging.warning("state.json corrupt (%s), backed up to %s", exc, backup.name)
+        except OSError as backup_err:
+            logging.error("state.json corrupt (%s) AND backup failed (%s)", exc, backup_err)
+        return {}
 
 
 def save_state(state: dict) -> None:
-    """Persist state back to disk."""
+    """Persist state to disk atomically (POSIX-guaranteed, best-effort on Windows)."""
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path = STATE_FILE.with_name(STATE_FILE.name + ".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path.replace(STATE_FILE)
 
 
 # ---------------------------------------------------------------------------

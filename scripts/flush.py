@@ -106,14 +106,32 @@ def _today_iso() -> str:
 
 
 def load_flush_state() -> dict:
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    return {}
+    """Load state.json. Corrupt JSON is backed up to <name>.corrupt-<UTC> and {} returned.
+
+    Inline duplicate of utils.load_state — flush.py avoids config import chain (see module header).
+    """
+    if not STATE_FILE.exists():
+        return {}
+    raw = STATE_FILE.read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        stamp = datetime.now(WIKI_TIMEZONE).strftime("%Y%m%dT%H%M%SZ")
+        backup = STATE_FILE.with_name(STATE_FILE.name + f".corrupt-{stamp}")
+        try:
+            STATE_FILE.replace(backup)
+            logging.warning("state.json corrupt (%s), backed up to %s", exc, backup.name)
+        except OSError as backup_err:
+            logging.error("state.json corrupt (%s) AND backup failed (%s)", exc, backup_err)
+        return {}
 
 
 def save_flush_state(state: dict) -> None:
+    """Persist state atomically (POSIX-guaranteed). Inline mirror of utils.save_state."""
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path = STATE_FILE.with_name(STATE_FILE.name + ".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path.replace(STATE_FILE)
 
 
 # ---------------------------------------------------------------------------
