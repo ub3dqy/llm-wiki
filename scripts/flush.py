@@ -74,15 +74,37 @@ def _count_active_locks() -> int:
 
 
 def acquire_flush_lock(session_id: str) -> Path | None:
-    """Try to acquire a concurrency slot. Returns lock path or None if at capacity."""
+    """Try to acquire a concurrency slot via atomic O_EXCL create.
+
+    Returns the lock path on success, or None if another flush for this
+    same session is already active or the concurrency budget is exceeded
+    after our atomic claim.
+    """
     LOCK_DIR.mkdir(parents=True, exist_ok=True)
     _cleanup_stale_locks()
 
-    if _count_active_locks() >= MAX_CONCURRENT_FLUSH:
+    lock_path = LOCK_DIR / f"flush-{session_id}.lock"
+    try:
+        # Atomic create: O_CREAT|O_EXCL fails with FileExistsError if the
+        # lock file already exists. Primary guard against same-session
+        # double-flush races.
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
         return None
 
-    lock_path = LOCK_DIR / f"flush-{session_id}.lock"
-    lock_path.write_text(str(os.getpid()), encoding="utf-8")
+    try:
+        os.write(fd, str(os.getpid()).encode("utf-8"))
+    finally:
+        os.close(fd)
+
+    # Re-count AFTER atomic claim. Without a portable file-lock we tolerate
+    # a narrow over-subscription window: N racers between O_EXCL success
+    # and this count check can each succeed create, then one+ see count >
+    # MAX and release. Budget enforcement is soft-capped.
+    if _count_active_locks() > MAX_CONCURRENT_FLUSH:
+        lock_path.unlink(missing_ok=True)
+        return None
+
     return lock_path
 
 
