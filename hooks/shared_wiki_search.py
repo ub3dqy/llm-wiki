@@ -4,6 +4,7 @@ Parses the user's prompt, finds wiki articles matching keywords,
 and injects their content as additionalContext so the agent has
 just-in-time knowledge for the specific question.
 """
+
 from __future__ import annotations
 
 import json
@@ -115,6 +116,7 @@ STOP_WORDS = {
     "есть",
 }
 
+
 def _strip_frontmatter(text: str) -> str:
     if not text.startswith("---"):
         return text
@@ -173,7 +175,9 @@ def build_search_phrases(prompt: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def score_article(path: Path, keywords: set[str], phrases: set[str], project_name: str | None = None) -> int:
+def score_article(
+    path: Path, keywords: set[str], phrases: set[str], project_name: str | None = None
+) -> int:
     """Score an article by exact and partial matches in metadata and body."""
     fm = parse_frontmatter(path)
     title = fm.get("title", "").lower()
@@ -352,7 +356,9 @@ def find_and_inject_articles() -> None:
         return
 
     cwd = hook_input.get("cwd", "")
-    project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) if isinstance(cwd, str) and cwd else None
+    project_name = (
+        infer_project_name_from_cwd(cwd, repo_root=ROOT) if isinstance(cwd, str) and cwd else None
+    )
 
     matches = find_relevant_articles(prompt, project_name=project_name)
     if not matches:

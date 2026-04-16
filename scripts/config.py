@@ -63,9 +63,7 @@ def _load_project_aliases() -> dict[str, set[str]]:
             continue
 
         normalized_values = {
-            value.strip()
-            for value in values
-            if isinstance(value, str) and value.strip()
+            value.strip() for value in values if isinstance(value, str) and value.strip()
         }
         if normalized_values:
             aliases[canonical.strip()] = normalized_values
@@ -76,7 +74,9 @@ def _load_project_aliases() -> dict[str, set[str]]:
 PROJECT_ALIASES: dict[str, set[str]] = _load_project_aliases()
 
 
-def _env_int(name: str, default: int, *, min_val: int | None = None, max_val: int | None = None) -> int:
+def _env_int(
+    name: str, default: int, *, min_val: int | None = None, max_val: int | None = None
+) -> int:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
         return default

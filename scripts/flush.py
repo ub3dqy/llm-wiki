@@ -3,6 +3,7 @@
 Called by hooks/session-end.py and hooks/pre-compact.py as a background process.
 Uses Claude Agent SDK to decide what's worth keeping.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -229,7 +230,9 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                         logging.error("[process-stderr] %s", subline)
                 return
             if attempt < max_retries and "timeout" in str(e).lower():
-                logging.warning("Agent SDK timeout (attempt %d/%d): %s", attempt + 1, max_retries + 1, e)
+                logging.warning(
+                    "Agent SDK timeout (attempt %d/%d): %s", attempt + 1, max_retries + 1, e
+                )
                 await asyncio.sleep(2)
                 continue
             logging.error("Agent SDK query failed: %s", e)
@@ -343,7 +346,11 @@ def main() -> None:
     # Concurrency control: max MAX_CONCURRENT_FLUSH parallel flush processes
     lock_path = acquire_flush_lock(session_id)
     if lock_path is None:
-        logging.info("SKIP: concurrency limit reached (%d), dropping session %s", MAX_CONCURRENT_FLUSH, session_id)
+        logging.info(
+            "SKIP: concurrency limit reached (%d), dropping session %s",
+            MAX_CONCURRENT_FLUSH,
+            session_id,
+        )
         context_file.unlink(missing_ok=True)
         return
 

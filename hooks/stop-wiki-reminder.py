@@ -4,6 +4,7 @@ Checks the last assistant response for decision/architecture keywords.
 If found, outputs a systemMessage hint about /wiki-save.
 Non-blocking — only a gentle reminder.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,12 +24,32 @@ DEBOUNCE_SEC = 300  # 5 minutes between reminders
 
 DECISION_KEYWORDS = [
     # English
-    "decided", "decision", "chose", "chosen", "architecture", "architectural",
-    "pattern", "convention", "migration", "schema", "trade-off", "tradeoff",
-    "approach", "strategy", "design",
+    "decided",
+    "decision",
+    "chose",
+    "chosen",
+    "architecture",
+    "architectural",
+    "pattern",
+    "convention",
+    "migration",
+    "schema",
+    "trade-off",
+    "tradeoff",
+    "approach",
+    "strategy",
+    "design",
     # Russian
-    "решил", "решение", "выбрал", "архитектур", "паттерн", "конвенци",
-    "миграци", "схем", "стратеги", "подход",
+    "решил",
+    "решение",
+    "выбрал",
+    "архитектур",
+    "паттерн",
+    "конвенци",
+    "миграци",
+    "схем",
+    "стратеги",
+    "подход",
 ]
 
 

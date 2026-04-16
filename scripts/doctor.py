@@ -3,6 +3,7 @@
 Usage:
     uv run python scripts/doctor.py [--quick | --full]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,7 +88,9 @@ def check_env_settings() -> CheckResult:
 
         detail = f"timezone={timezone_key}, compile_hour={WIKI_COMPILE_AFTER_HOUR}"
         if raw_timezone and raw_timezone != timezone_key:
-            detail += f" (warning: invalid WIKI_TIMEZONE={raw_timezone!r}, fell back to {timezone_key})"
+            detail += (
+                f" (warning: invalid WIKI_TIMEZONE={raw_timezone!r}, fell back to {timezone_key})"
+            )
         return CheckResult("env_settings", True, detail)
     except Exception as exc:  # noqa: BLE001
         return CheckResult("env_settings", False, f"Failed to load settings: {exc}")
@@ -190,7 +193,9 @@ def check_flush_throughput() -> CheckResult:
             f"{detail} [attention: very high skip rate — possible pipeline issue, investigate flush.py]",
         )
     if skip_rate > 0.70:
-        return CheckResult("flush_throughput", True, f"{detail} [info: moderate skip rate — monitor]")
+        return CheckResult(
+            "flush_throughput", True, f"{detail} [info: moderate skip rate — monitor]"
+        )
     return CheckResult("flush_throughput", True, detail)
 
 
@@ -290,7 +295,9 @@ def check_total_tokens_injection() -> CheckResult:
 
         from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
     except ImportError:
-        return CheckResult("total_tokens_injection", True, "claude_agent_sdk not available, skipping")
+        return CheckResult(
+            "total_tokens_injection", True, "claude_agent_sdk not available, skipping"
+        )
 
     probe = (
         "Diagnostic check. Inspect your current input context and determine whether it contains "
@@ -345,6 +352,7 @@ def check_total_tokens_injection() -> CheckResult:
         True,
         f"Probe returned unexpected output: {result_text[:200]!r}. Treating as non-blocking; inspect manually if needed.",
     )
+
 
 def check_python() -> CheckResult:
     version = sys.version_info
@@ -415,7 +423,9 @@ def check_codex_hooks_file() -> CheckResult:
         return CheckResult("codex_hooks_json", False, f"Invalid JSON: {exc}")
 
     if "/root/.cache/llm-wiki/.venv" in text:
-        return CheckResult("codex_hooks_json", False, "hooks.json still references /root/.cache/llm-wiki/.venv")
+        return CheckResult(
+            "codex_hooks_json", False, "hooks.json still references /root/.cache/llm-wiki/.venv"
+        )
 
     hook_names = set((data.get("hooks") or {}).keys())
     expected = {"SessionStart", "Stop", "UserPromptSubmit", "PostToolUse"}
@@ -442,7 +452,9 @@ def run_hook(script_name: str, payload: dict) -> tuple[bool, str]:
     return True, proc.stdout.strip()
 
 
-def run_script_check(script_name: str, args: list[str] | None = None, timeout: int = 30) -> tuple[bool, str]:
+def run_script_check(
+    script_name: str, args: list[str] | None = None, timeout: int = 30
+) -> tuple[bool, str]:
     """Run a repo script with the current interpreter and return success plus output."""
     script_path = ROOT_DIR / "scripts" / script_name
     cmd = [sys.executable, str(script_path)]
@@ -478,7 +490,9 @@ def check_session_start_smoke() -> CheckResult:
         data = json.loads(output)
         context = data["hookSpecificOutput"]["additionalContext"]
         if not context.strip():
-            return CheckResult("session_start_smoke", False, "Hook returned empty additionalContext")
+            return CheckResult(
+                "session_start_smoke", False, "Hook returned empty additionalContext"
+            )
     except Exception as exc:  # noqa: BLE001
         return CheckResult("session_start_smoke", False, f"Invalid hook output: {exc}")
 
@@ -505,7 +519,9 @@ def check_user_prompt_smoke() -> CheckResult:
     except Exception as exc:  # noqa: BLE001
         return CheckResult("user_prompt_smoke", False, f"Invalid hook output: {exc}")
 
-    return CheckResult("user_prompt_smoke", True, "UserPromptSubmit returned relevant article context")
+    return CheckResult(
+        "user_prompt_smoke", True, "UserPromptSubmit returned relevant article context"
+    )
 
 
 def check_stop_smoke() -> CheckResult:
@@ -621,7 +637,9 @@ def check_structural_lint() -> CheckResult:
 
 def check_query_preview_smoke() -> CheckResult:
     if not has_bootstrap_articles():
-        return CheckResult("query_preview_smoke", True, "Skipped on bootstrap-only wiki (no articles yet)")
+        return CheckResult(
+            "query_preview_smoke", True, "Skipped on bootstrap-only wiki (no articles yet)"
+        )
 
     ok, output = run_script_check(
         "query.py",
@@ -637,9 +655,13 @@ def check_query_preview_smoke() -> CheckResult:
     if "llm-wiki-architecture" not in lowered:
         return CheckResult("query_preview_smoke", False, "Relevant article missing from preview")
     if "confidence:" not in lowered:
-        return CheckResult("query_preview_smoke", False, "Preview does not expose confidence metadata")
+        return CheckResult(
+            "query_preview_smoke", False, "Preview does not expose confidence metadata"
+        )
 
-    return CheckResult("query_preview_smoke", True, "Query preview returned provenance-aware candidates")
+    return CheckResult(
+        "query_preview_smoke", True, "Query preview returned provenance-aware candidates"
+    )
 
 
 def check_wiki_cli_query_preview_smoke() -> CheckResult:
@@ -660,11 +682,19 @@ def check_wiki_cli_query_preview_smoke() -> CheckResult:
 
     lowered = output.lower()
     if "query preview" not in lowered:
-        return CheckResult("wiki_cli_query_preview_smoke", False, "Preview header missing from wiki_cli route")
+        return CheckResult(
+            "wiki_cli_query_preview_smoke", False, "Preview header missing from wiki_cli route"
+        )
     if "llm-wiki-architecture" not in lowered:
-        return CheckResult("wiki_cli_query_preview_smoke", False, "Relevant article missing from wiki_cli preview")
+        return CheckResult(
+            "wiki_cli_query_preview_smoke", False, "Relevant article missing from wiki_cli preview"
+        )
     if "confidence:" not in lowered:
-        return CheckResult("wiki_cli_query_preview_smoke", False, "wiki_cli preview does not expose confidence metadata")
+        return CheckResult(
+            "wiki_cli_query_preview_smoke",
+            False,
+            "wiki_cli preview does not expose confidence metadata",
+        )
 
     return CheckResult(
         "wiki_cli_query_preview_smoke",
@@ -688,7 +718,9 @@ def check_wiki_cli_status_smoke() -> CheckResult:
             f"Missing expected status markers: {', '.join(missing)}",
         )
 
-    return CheckResult("wiki_cli_status_smoke", True, "wiki_cli status returned expected summary fields")
+    return CheckResult(
+        "wiki_cli_status_smoke", True, "wiki_cli status returned expected summary fields"
+    )
 
 
 def check_wiki_cli_lint_smoke() -> CheckResult:
@@ -702,9 +734,13 @@ def check_wiki_cli_lint_smoke() -> CheckResult:
     if "results:" not in lowered:
         return CheckResult("wiki_cli_lint_smoke", False, "wiki_cli structural lint summary missing")
     if "0 errors" not in lowered:
-        return CheckResult("wiki_cli_lint_smoke", False, "wiki_cli structural lint reported blocking errors")
+        return CheckResult(
+            "wiki_cli_lint_smoke", False, "wiki_cli structural lint reported blocking errors"
+        )
 
-    return CheckResult("wiki_cli_lint_smoke", True, "wiki_cli structural lint reported zero blocking errors")
+    return CheckResult(
+        "wiki_cli_lint_smoke", True, "wiki_cli structural lint reported zero blocking errors"
+    )
 
 
 def check_wiki_cli_rebuild_check_smoke() -> CheckResult:
@@ -757,7 +793,9 @@ def check_path_normalization() -> CheckResult:
     if failures:
         return CheckResult("path_normalization", False, "; ".join(failures))
 
-    return CheckResult("path_normalization", True, "Windows, WSL, Git Bash, and repo-root cwd cases passed")
+    return CheckResult(
+        "path_normalization", True, "Windows, WSL, Git Bash, and repo-root cwd cases passed"
+    )
 
 
 def print_result(result: CheckResult) -> None:
@@ -812,11 +850,18 @@ def get_full_checks() -> list[CheckResult]:
         check_total_tokens_injection(),
     ]
 
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify the local wiki runtime and Codex hook setup")
+    parser = argparse.ArgumentParser(
+        description="Verify the local wiki runtime and Codex hook setup"
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--quick", action="store_true", help="Run only the fast daily checks")
-    mode.add_argument("--full", action="store_true", help="Run the full gate, including hook and WSL-specific checks")
+    mode.add_argument(
+        "--full",
+        action="store_true",
+        help="Run the full gate, including hook and WSL-specific checks",
+    )
     return parser.parse_args()
 
 

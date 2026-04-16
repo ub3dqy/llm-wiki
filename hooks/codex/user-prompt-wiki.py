@@ -1,4 +1,5 @@
 """Codex UserPromptSubmit: reuse shared wiki search logic."""
+
 from __future__ import annotations
 
 import logging

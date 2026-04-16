@@ -1,4 +1,5 @@
 """UserPromptSubmit hook: inject relevant wiki articles based on prompt content."""
+
 from __future__ import annotations
 
 from shared_wiki_search import find_and_inject_articles

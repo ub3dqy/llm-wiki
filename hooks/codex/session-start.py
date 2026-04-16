@@ -1,4 +1,5 @@
 """Codex SessionStart: reuse shared context logic."""
+
 from __future__ import annotations
 
 import logging
