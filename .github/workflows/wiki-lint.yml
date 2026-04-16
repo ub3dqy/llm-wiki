@@ -33,6 +33,9 @@ jobs:
       - name: Ruff check (I rule)
         run: uv run ruff check --select I scripts/ hooks/
 
+      - name: Ruff format check
+        run: uv run ruff format --check scripts/ hooks/
+
       - name: Syntax check all Python files
         run: |
           uv run python -c "
