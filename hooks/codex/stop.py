@@ -70,13 +70,27 @@ def _emit_ok(message: str | None = None) -> None:
 
 
 def _spawn_worker(hook_input: dict) -> None:
-    worker = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "--worker"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    subprocess_log = SCRIPTS_DIR / "flush-subprocess.log"
+    try:
+        subproc_log_fp = open(subprocess_log, "a", encoding="utf-8", buffering=1)
+    except OSError as log_err:
+        logging.warning("Could not open subprocess log (%s); falling back to DEVNULL", log_err)
+        subproc_log_fp = None
+
+    stdout_target = subproc_log_fp if subproc_log_fp is not None else subprocess.DEVNULL
+    stderr_target = subprocess.STDOUT if subproc_log_fp is not None else subprocess.DEVNULL
+
+    try:
+        worker = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "--worker"],
+            stdin=subprocess.PIPE,
+            stdout=stdout_target,
+            stderr=stderr_target,
+            start_new_session=True,
+        )
+    finally:
+        if subproc_log_fp is not None:
+            subproc_log_fp.close()
     if worker.stdin is None:
         raise RuntimeError("worker stdin pipe not created")
     worker.stdin.write(json.dumps(hook_input, ensure_ascii=False).encode("utf-8"))
@@ -206,11 +220,21 @@ def main_worker() -> None:
     if sys.platform == "win32":
         creation_flags = subprocess.CREATE_NO_WINDOW
 
+    subprocess_log = SCRIPTS_DIR / "flush-subprocess.log"
+    try:
+        subproc_log_fp = open(subprocess_log, "a", encoding="utf-8", buffering=1)
+    except OSError as log_err:
+        logging.warning("Could not open subprocess log (%s); falling back to DEVNULL", log_err)
+        subproc_log_fp = None
+
+    stdout_target = subproc_log_fp if subproc_log_fp is not None else subprocess.DEVNULL
+    stderr_target = subprocess.STDOUT if subproc_log_fp is not None else subprocess.DEVNULL
+
     try:
         subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=stdout_target,
+            stderr=stderr_target,
             creationflags=creation_flags,
         )
         update_debounce(DEBOUNCE_FILE)
@@ -224,6 +248,9 @@ def main_worker() -> None:
     except Exception as exc:
         logging.error("[stop-worker] Failed to spawn flush.py: %s", exc)
         return
+    finally:
+        if subproc_log_fp is not None:
+            subproc_log_fp.close()
 
 
 if __name__ == "__main__":

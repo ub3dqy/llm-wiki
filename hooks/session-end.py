@@ -120,11 +120,22 @@ def main() -> None:
     if sys.platform == "win32":
         creation_flags = subprocess.CREATE_NO_WINDOW
 
+    # Capture child startup errors instead of dropping them to DEVNULL.
+    subprocess_log = SCRIPTS_DIR / "flush-subprocess.log"
+    try:
+        subproc_log_fp = open(subprocess_log, "a", encoding="utf-8", buffering=1)
+    except OSError as log_err:
+        logging.warning("Could not open subprocess log (%s); falling back to DEVNULL", log_err)
+        subproc_log_fp = None
+
+    stdout_target = subproc_log_fp if subproc_log_fp is not None else subprocess.DEVNULL
+    stderr_target = subprocess.STDOUT if subproc_log_fp is not None else subprocess.DEVNULL
+
     try:
         subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=stdout_target,
+            stderr=stderr_target,
             env=env,
             creationflags=creation_flags,
         )
@@ -138,6 +149,9 @@ def main() -> None:
         )
     except Exception as e:
         logging.error("Failed to spawn flush.py: %s", e)
+    finally:
+        if subproc_log_fp is not None:
+            subproc_log_fp.close()
 
 
 if __name__ == "__main__":
