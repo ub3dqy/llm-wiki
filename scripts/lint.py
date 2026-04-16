@@ -693,7 +693,7 @@ def check_contradictions_portable() -> list[dict]:
             return [
                 {
                     "severity": "warning",
-                    "check": "contradiction",
+                    "check": "contradiction_runtime",
                     "file": "(system)",
                     "detail": "claude_agent_sdk unavailable and uv not found for contradiction delegation",
                 }
@@ -721,7 +721,7 @@ def check_contradictions_portable() -> list[dict]:
             return [
                 {
                     "severity": "warning",
-                    "check": "contradiction",
+                    "check": "contradiction_runtime",
                     "file": "(system)",
                     "detail": f"Contradiction delegation via uv failed: {exc}",
                 }
@@ -732,7 +732,7 @@ def check_contradictions_portable() -> list[dict]:
             return [
                 {
                     "severity": "warning",
-                    "check": "contradiction",
+                    "check": "contradiction_runtime",
                     "file": "(system)",
                     "detail": f"Contradiction runtime via uv failed: {detail}",
                 }
@@ -744,7 +744,7 @@ def check_contradictions_portable() -> list[dict]:
             return [
                 {
                     "severity": "warning",
-                    "check": "contradiction",
+                    "check": "contradiction_runtime",
                     "file": "(system)",
                     "detail": f"Invalid contradiction JSON from uv runtime: {exc}",
                 }
@@ -755,7 +755,7 @@ def check_contradictions_portable() -> list[dict]:
         return [
             {
                 "severity": "warning",
-                "check": "contradiction",
+                "check": "contradiction_runtime",
                 "file": "(system)",
                 "detail": "WSL contradiction check could not derive a Windows repo path",
             }
@@ -782,7 +782,7 @@ def check_contradictions_portable() -> list[dict]:
         return [
             {
                 "severity": "warning",
-                "check": "contradiction",
+                "check": "contradiction_runtime",
                 "file": "(system)",
                 "detail": f"WSL contradiction delegation failed: {exc}",
             }
@@ -795,7 +795,7 @@ def check_contradictions_portable() -> list[dict]:
         return [
             {
                 "severity": "warning",
-                "check": "contradiction",
+                "check": "contradiction_runtime",
                 "file": "(system)",
                 "detail": f"Windows contradiction runtime failed: {detail}",
             }
@@ -808,7 +808,7 @@ def check_contradictions_portable() -> list[dict]:
         return [
             {
                 "severity": "warning",
-                "check": "contradiction",
+                "check": "contradiction_runtime",
                 "file": "(system)",
                 "detail": f"Invalid contradiction JSON from Windows runtime: {exc}",
             }
