@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import time
@@ -44,6 +45,10 @@ _ARTICLE_FRONTMATTER_CACHE: dict[Path, dict[str, str]] = {}
 _ARTICLE_WIKILINKS_CACHE: dict[Path, list[str]] = {}
 _ARTICLE_WORD_COUNT_CACHE: dict[Path, int] = {}
 _INBOUND_LINK_COUNT_CACHE: dict[str, int] | None = None
+_UNSTABLE_URL_PATTERNS = [
+    re.compile(r"github\.com/[^/]+/[^/]+/(blob|wiki|tree)/"),
+    re.compile(r"github\.com/[^/]+/[^/]+/?$"),
+]
 
 
 def _wiki_articles() -> list[Path]:
@@ -335,6 +340,10 @@ def _domain_key(url: str) -> str:
     return (parts.netloc or parts.path).lower()
 
 
+def _is_unstable_url(url: str) -> bool:
+    return any(pattern.search(url) for pattern in _UNSTABLE_URL_PATTERNS)
+
+
 def _is_newer_last_modified(stored_value: str, current_value: str) -> bool:
     stored_dt = _parse_http_datetime(stored_value)
     current_dt = _parse_http_datetime(current_value)
@@ -397,6 +406,10 @@ def _check_source_url(
             new_etag = str(response.headers.get("ETag", "") or "")
             new_last_modified = str(response.headers.get("Last-Modified", "") or "")
 
+        if _is_unstable_url(url):
+            entry["last_status"] = "unverifiable"
+            return "unverifiable", "GitHub HTML page (validator-unstable)", entry
+
         if not entry["etag"] and not entry["last_modified"]:
             entry["etag"] = new_etag
             entry["last_modified"] = new_last_modified
@@ -419,6 +432,9 @@ def _check_source_url(
         return classification, detail, entry
     except urllib.error.HTTPError as exc:
         if exc.code == 304:
+            if _is_unstable_url(url):
+                entry["last_status"] = "unverifiable"
+                return "unverifiable", "304 Not Modified on validator-unstable URL", entry
             entry["last_status"] = "no_drift"
             return "no_drift", "304 Not Modified", entry
         if exc.code in (404, 410):
