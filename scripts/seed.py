@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path
@@ -26,7 +25,6 @@ from config import (
     INDEX_FILE,
     LOG_FILE,
     SCHEMA_FILE,
-    WIKI_DIR,
     now_iso,
 )
 from utils import read_wiki_index
@@ -237,7 +235,7 @@ def main() -> None:
         print(f"  - {f}")
     if project_info["src_tree"]:
         print(f"Source dirs: {len(project_info['src_tree'])}")
-    print(f"Estimated cost: ~$0.10-0.30")
+    print("Estimated cost: ~$0.10-0.30")
 
     if args.dry_run:
         return

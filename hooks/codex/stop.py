@@ -92,7 +92,6 @@ def main_light() -> None:
 
     session_id = hook_input.get("session_id", "unknown")
     turn_id = hook_input.get("turn_id", "unknown")
-    cwd = hook_input.get("cwd", "")
     transcript_path_str = get_transcript_path(hook_input)
     last_assistant_message = hook_input.get("last_assistant_message")
     logging.info("Stop fired: session=%s turn=%s", session_id, turn_id)

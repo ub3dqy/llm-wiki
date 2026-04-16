@@ -18,7 +18,7 @@ from config import (  # noqa: E402
     WIKI_MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS,
     WIKI_MAX_TURNS as MAX_TURNS,
 )
-from utils import parse_frontmatter  # noqa: E402
+from utils import parse_frontmatter  # noqa: E402, F401  # re-export for shared hook modules
 
 _WINDOWS_DRIVE_RE = re.compile(r"^([a-zA-Z]):(?:/|$)")
 _WSL_DRIVE_RE = re.compile(r"^/mnt/([a-zA-Z])(?:/|$)")

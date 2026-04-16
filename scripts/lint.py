@@ -18,7 +18,6 @@ from runtime_utils import find_uv, is_wsl
 from utils import (
     extract_wikilinks,
     file_hash,
-    frontmatter_sources_include_prefix,
     get_article_word_count,
     list_daily_logs,
     list_wiki_articles,
@@ -324,7 +323,6 @@ def check_provenance_completeness() -> list[dict]:
     for article in _wiki_articles():
         fm = _article_frontmatter(article)
         page_type = fm.get("type", "").strip()
-        sources = fm.get("sources", "")
         if page_type not in {"concept", "connection"}:
             continue
 
@@ -365,7 +363,7 @@ def check_provenance_completeness() -> list[dict]:
 
 async def check_contradictions() -> list[dict]:
     """Use LLM to detect contradictions across articles."""
-    from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
+    from claude_agent_sdk import ClaudeAgentOptions, query
 
     wiki_content = read_all_wiki_content()
 

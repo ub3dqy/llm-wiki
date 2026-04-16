@@ -10,7 +10,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -20,6 +19,8 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from runtime_utils import find_uv, is_wsl
 
 try:
     import tomllib
@@ -33,7 +34,6 @@ INDEX_FILE = ROOT_DIR / "index.md"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 FLUSH_LOG = SCRIPTS_DIR / "flush.log"
 CAPTURE_HEALTH_WINDOW_DAYS = 7
-from runtime_utils import find_uv, is_wsl
 
 
 @dataclass
