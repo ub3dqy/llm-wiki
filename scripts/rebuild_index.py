@@ -17,7 +17,7 @@ from pathlib import Path
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import INDEX_FILE, now_iso
+from config import INDEX_FILE
 from utils import build_article_metadata_map
 
 # Regex to strip one or more trailing [project] annotations, optionally followed by (Nw)

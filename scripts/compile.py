@@ -24,7 +24,6 @@ from config import (
     INDEX_FILE,
     LOG_FILE,
     SCHEMA_FILE,
-    WIKI_DIR,
     now_iso,
 )
 from utils import (
