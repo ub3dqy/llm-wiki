@@ -8,9 +8,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
+
+# --- Logging (match flush.py / hooks target file) ---
+_SCRIPTS_DIR_FOR_LOG = Path(__file__).resolve().parent
+logging.basicConfig(
+    filename=str(_SCRIPTS_DIR_FOR_LOG / "flush.log"),
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [compile] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 # Propagate guard to Agent SDK sub-sessions so hooks don't fire for them.
 os.environ["CLAUDE_INVOKED_BY"] = "compile"
@@ -18,7 +28,7 @@ os.environ["CLAUDE_INVOKED_BY"] = "compile"
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import (
+from config import (  # noqa: E402
     CONCEPTS_DIR,
     CONNECTIONS_DIR,
     INDEX_FILE,
@@ -26,7 +36,7 @@ from config import (
     SCHEMA_FILE,
     now_iso,
 )
-from utils import (
+from utils import (  # noqa: E402
     file_hash,
     list_daily_logs,
     list_wiki_articles,
@@ -187,9 +197,11 @@ to create a new article or update an existing one. Use Grep to find related arti
             if hasattr(message, "total_cost_usd"):
                 cost = message.total_cost_usd or 0.0
                 print(f"  Cost: ${cost:.4f}")
+                logging.info("Compile cost for %s: $%.4f", log_path.name, cost)
     except Exception as e:
-        print(f"  Error: {e}")
-        return 0.0
+        print(f"  Error: {e}", file=sys.stderr)
+        logging.error("Agent SDK failure compiling %s: %s", log_path.name, e)
+        raise
 
     # Track what we compiled
     rel_path = log_path.name
@@ -254,9 +266,15 @@ def main() -> None:
         return
 
     total_cost = 0.0
+    failed_logs: list[str] = []
     for i, log_path in enumerate(to_compile, 1):
         print(f"\n[{i}/{len(to_compile)}] Compiling {log_path.name}...")
-        cost = asyncio.run(compile_daily_log(log_path, state))
+        try:
+            cost = asyncio.run(compile_daily_log(log_path, state))
+        except Exception as e:
+            failed_logs.append(log_path.name)
+            print(f"  Failed: {e}", file=sys.stderr)
+            continue
         total_cost += cost
         print("  Done.")
 
@@ -269,6 +287,14 @@ def main() -> None:
     articles = list_wiki_articles()
     print(f"\nCompilation complete. Total cost: ${total_cost:.2f}")
     print(f"Knowledge base: {len(articles)} articles")
+
+    if failed_logs:
+        print(
+            f"\n{len(failed_logs)} log(s) failed to compile: {', '.join(failed_logs)}",
+            file=sys.stderr,
+        )
+        logging.error("compile.py exit 1 — %d failed log(s): %s", len(failed_logs), failed_logs)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

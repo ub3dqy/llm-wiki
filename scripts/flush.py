@@ -62,8 +62,8 @@ def _cleanup_stale_locks() -> None:
             if age > LOCK_TIMEOUT_SEC:
                 lock_file.unlink(missing_ok=True)
                 logging.info("Cleaned stale lock: %s (age: %.0fs)", lock_file.name, age)
-        except OSError:
-            pass
+        except OSError as e:
+            logging.warning("Stale lock cleanup failed for %s: %s", lock_file.name, e)
 
 
 def _count_active_locks() -> int:
