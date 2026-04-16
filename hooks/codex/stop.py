@@ -7,6 +7,7 @@ CRITICAL differences from Claude SessionEnd:
 - Exit 0 always emits valid JSON on stdout; plain text is invalid for this event
 - Uses char-based gating to match the main capture pipeline
 """
+
 from __future__ import annotations
 
 import json
@@ -171,9 +172,13 @@ def main_worker() -> None:
     min_chars = degraded_min if degraded_mode else WIKI_MIN_FLUSH_CHARS
     if content_len < min_chars:
         if degraded_mode:
-            logging.info("[stop-worker] SKIP: degraded too short (%d chars, min %d)", content_len, min_chars)
+            logging.info(
+                "[stop-worker] SKIP: degraded too short (%d chars, min %d)", content_len, min_chars
+            )
         else:
-            logging.info("[stop-worker] SKIP: only %d chars (min %d)", content_len, WIKI_MIN_FLUSH_CHARS)
+            logging.info(
+                "[stop-worker] SKIP: only %d chars (min %d)", content_len, WIKI_MIN_FLUSH_CHARS
+            )
         return
 
     project_name = infer_project_name_from_cwd(cwd, repo_root=ROOT) or "unknown"
@@ -220,6 +225,7 @@ def main_worker() -> None:
     except Exception as exc:
         logging.error("[stop-worker] Failed to spawn flush.py: %s", exc)
         return
+
 
 if __name__ == "__main__":
     try:

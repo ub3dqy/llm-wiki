@@ -1,4 +1,5 @@
 """Lint: run health checks on the knowledge base."""
+
 from __future__ import annotations
 
 import argparse
@@ -29,9 +30,7 @@ from utils import (
 )
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ADVISORY_BANNER = (
-    "[ADVISORY] Contradiction check results are non-deterministic and must not be used as a merge gate."
-)
+ADVISORY_BANNER = "[ADVISORY] Contradiction check results are non-deterministic and must not be used as a merge gate."
 
 _ARTICLE_LIST_CACHE: list[Path] | None = None
 _ARTICLE_TEXT_CACHE: dict[Path, str] = {}
@@ -131,12 +130,14 @@ def check_broken_links() -> list[dict]:
             if link.startswith("daily/"):
                 continue
             if not wiki_article_exists(link):
-                issues.append({
-                    "severity": "error",
-                    "check": "broken_link",
-                    "file": str(rel),
-                    "detail": f"Broken link: [[{link}]] — target does not exist",
-                })
+                issues.append(
+                    {
+                        "severity": "error",
+                        "check": "broken_link",
+                        "file": str(rel),
+                        "detail": f"Broken link: [[{link}]] — target does not exist",
+                    }
+                )
     return issues
 
 
@@ -149,12 +150,14 @@ def check_orphan_pages() -> list[dict]:
         link_target = str(rel).replace(".md", "").replace("\\", "/")
         inbound = inbound_counts.get(link_target, 0)
         if inbound == 0:
-            issues.append({
-                "severity": "warning",
-                "check": "orphan_page",
-                "file": str(rel),
-                "detail": f"Orphan page: no other articles link to [[{link_target}]]",
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "check": "orphan_page",
+                    "file": str(rel),
+                    "detail": f"Orphan page: no other articles link to [[{link_target}]]",
+                }
+            )
     return issues
 
 
@@ -165,12 +168,14 @@ def check_orphan_sources() -> list[dict]:
     issues: list[dict] = []
     for log_path in list_daily_logs():
         if log_path.name not in ingested:
-            issues.append({
-                "severity": "warning",
-                "check": "orphan_source",
-                "file": f"daily/{log_path.name}",
-                "detail": f"Uncompiled daily log: {log_path.name} has not been ingested",
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "check": "orphan_source",
+                    "file": f"daily/{log_path.name}",
+                    "detail": f"Uncompiled daily log: {log_path.name} has not been ingested",
+                }
+            )
     return issues
 
 
@@ -185,12 +190,14 @@ def check_stale_articles() -> list[dict]:
             stored_hash = ingested[rel].get("hash", "")
             current_hash = file_hash(log_path)
             if stored_hash != current_hash:
-                issues.append({
-                    "severity": "warning",
-                    "check": "stale_article",
-                    "file": f"daily/{rel}",
-                    "detail": f"Stale: {rel} has changed since last compilation",
-                })
+                issues.append(
+                    {
+                        "severity": "warning",
+                        "check": "stale_article",
+                        "file": f"daily/{rel}",
+                        "detail": f"Stale: {rel} has changed since last compilation",
+                    }
+                )
     return issues
 
 
@@ -215,45 +222,53 @@ def check_freshness_review_debt() -> list[dict]:
             continue
 
         if status == "superseded" and not fm.get("superseded_by"):
-            issues.append({
-                "severity": "warning",
-                "check": "freshness_superseded_without_link",
-                "file": rel_str,
-                "detail": f"{rel_str}: status=superseded but no superseded_by wikilink",
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "check": "freshness_superseded_without_link",
+                    "file": rel_str,
+                    "detail": f"{rel_str}: status=superseded but no superseded_by wikilink",
+                }
+            )
             continue
 
         reviewed_str = fm.get("reviewed", "")
         max_age = source_max_age if rel_str.startswith("sources/") else concept_max_age
 
         if not reviewed_str:
-            issues.append({
-                "severity": "suggestion",
-                "check": "freshness_never_reviewed",
-                "file": rel_str,
-                "detail": f"{rel_str}: no 'reviewed' field — consider adding review date",
-            })
+            issues.append(
+                {
+                    "severity": "suggestion",
+                    "check": "freshness_never_reviewed",
+                    "file": rel_str,
+                    "detail": f"{rel_str}: no 'reviewed' field — consider adding review date",
+                }
+            )
             continue
 
         try:
             reviewed_date = date.fromisoformat(str(reviewed_str))
         except (TypeError, ValueError):
-            issues.append({
-                "severity": "warning",
-                "check": "freshness_malformed_reviewed",
-                "file": rel_str,
-                "detail": f"{rel_str}: 'reviewed' field not valid ISO date (got {reviewed_str!r})",
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "check": "freshness_malformed_reviewed",
+                    "file": rel_str,
+                    "detail": f"{rel_str}: 'reviewed' field not valid ISO date (got {reviewed_str!r})",
+                }
+            )
             continue
 
         age = (today - reviewed_date).days
         if today - reviewed_date > timedelta(days=max_age):
-            issues.append({
-                "severity": "suggestion",
-                "check": "freshness_review_overdue",
-                "file": rel_str,
-                "detail": f"{rel_str}: last reviewed {age} days ago (max {max_age} for {rel.parts[0]}/)",
-            })
+            issues.append(
+                {
+                    "severity": "suggestion",
+                    "check": "freshness_review_overdue",
+                    "file": rel_str,
+                    "detail": f"{rel_str}: last reviewed {age} days ago (max {max_age} for {rel.parts[0]}/)",
+                }
+            )
 
     return issues
 
@@ -271,13 +286,15 @@ def check_missing_backlinks() -> list[dict]:
             target_path = WIKI_DIR / f"{link}.md"
             if target_path.exists():
                 if source_link not in _article_wikilinks(target_path):
-                    issues.append({
-                        "severity": "suggestion",
-                        "check": "missing_backlink",
-                        "file": str(rel),
-                        "detail": f"[[{source_link}]] links to [[{link}]] but not vice versa",
-                        "auto_fixable": True,
-                    })
+                    issues.append(
+                        {
+                            "severity": "suggestion",
+                            "check": "missing_backlink",
+                            "file": str(rel),
+                            "detail": f"[[{source_link}]] links to [[{link}]] but not vice versa",
+                            "auto_fixable": True,
+                        }
+                    )
     return issues
 
 
@@ -288,12 +305,14 @@ def check_sparse_articles() -> list[dict]:
         word_count = _article_word_count(article)
         if word_count < 200:
             rel = article.relative_to(WIKI_DIR)
-            issues.append({
-                "severity": "suggestion",
-                "check": "sparse_article",
-                "file": str(rel),
-                "detail": f"Sparse article: {word_count} words (minimum recommended: 200)",
-            })
+            issues.append(
+                {
+                    "severity": "suggestion",
+                    "check": "sparse_article",
+                    "file": str(rel),
+                    "detail": f"Sparse article: {word_count} words (minimum recommended: 200)",
+                }
+            )
     return issues
 
 
@@ -314,23 +333,27 @@ def check_provenance_completeness() -> list[dict]:
         confidence = fm.get("confidence", "").strip()
 
         if confidence not in allowed_confidence:
-            issues.append({
-                "severity": "error",
-                "check": "provenance_completeness",
-                "file": str(rel),
-                "detail": (
-                    "Concept/connection article must have confidence: "
-                    "extracted | inferred | to-verify"
-                ),
-            })
+            issues.append(
+                {
+                    "severity": "error",
+                    "check": "provenance_completeness",
+                    "file": str(rel),
+                    "detail": (
+                        "Concept/connection article must have confidence: "
+                        "extracted | inferred | to-verify"
+                    ),
+                }
+            )
 
         if "\n## Provenance" not in content:
-            issues.append({
-                "severity": "error",
-                "check": "provenance_completeness",
-                "file": str(rel),
-                "detail": "Concept/connection article must include a ## Provenance section",
-            })
+            issues.append(
+                {
+                    "severity": "error",
+                    "check": "provenance_completeness",
+                    "file": str(rel),
+                    "detail": "Concept/connection article must include a ## Provenance section",
+                }
+            )
 
     return issues
 
@@ -383,24 +406,28 @@ Do NOT output anything else — no preamble, no explanation, just the formatted 
                     if hasattr(block, "text"):
                         response += block.text
     except Exception as e:
-        return [{
-            "severity": "warning",
-            "check": "contradiction",
-            "file": "(system)",
-            "detail": f"LLM contradiction check unavailable in current runtime: {e}",
-        }]
+        return [
+            {
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"LLM contradiction check unavailable in current runtime: {e}",
+            }
+        ]
 
     issues: list[dict] = []
     if "NO_ISSUES" not in response:
         for line in response.strip().split("\n"):
             line = line.strip()
             if line.startswith("CONTRADICTION:") or line.startswith("INCONSISTENCY:"):
-                issues.append({
-                    "severity": "warning",
-                    "check": "contradiction",
-                    "file": "(cross-article)",
-                    "detail": line,
-                })
+                issues.append(
+                    {
+                        "severity": "warning",
+                        "check": "contradiction",
+                        "file": "(cross-article)",
+                        "detail": line,
+                    }
+                )
 
     return issues
 
@@ -417,12 +444,14 @@ def check_contradictions_portable() -> list[dict]:
 
         uv_bin = find_uv()
         if not uv_bin:
-            return [{
-                "severity": "warning",
-                "check": "contradiction",
-                "file": "(system)",
-                "detail": "claude_agent_sdk unavailable and uv not found for contradiction delegation",
-            }]
+            return [
+                {
+                    "severity": "warning",
+                    "check": "contradiction",
+                    "file": "(system)",
+                    "detail": "claude_agent_sdk unavailable and uv not found for contradiction delegation",
+                }
+            ]
 
         try:
             proc = subprocess.run(
@@ -443,40 +472,48 @@ def check_contradictions_portable() -> list[dict]:
                 timeout=240,
             )
         except Exception as exc:  # noqa: BLE001
-            return [{
-                "severity": "warning",
-                "check": "contradiction",
-                "file": "(system)",
-                "detail": f"Contradiction delegation via uv failed: {exc}",
-            }]
+            return [
+                {
+                    "severity": "warning",
+                    "check": "contradiction",
+                    "file": "(system)",
+                    "detail": f"Contradiction delegation via uv failed: {exc}",
+                }
+            ]
 
         if proc.returncode != 0:
             detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
-            return [{
-                "severity": "warning",
-                "check": "contradiction",
-                "file": "(system)",
-                "detail": f"Contradiction runtime via uv failed: {detail}",
-            }]
+            return [
+                {
+                    "severity": "warning",
+                    "check": "contradiction",
+                    "file": "(system)",
+                    "detail": f"Contradiction runtime via uv failed: {detail}",
+                }
+            ]
 
         try:
             return json.loads(proc.stdout.strip() or "[]")
         except json.JSONDecodeError as exc:
-            return [{
-                "severity": "warning",
-                "check": "contradiction",
-                "file": "(system)",
-                "detail": f"Invalid contradiction JSON from uv runtime: {exc}",
-            }]
+            return [
+                {
+                    "severity": "warning",
+                    "check": "contradiction",
+                    "file": "(system)",
+                    "detail": f"Invalid contradiction JSON from uv runtime: {exc}",
+                }
+            ]
 
     windows_root = to_windows_path(ROOT_DIR)
     if not windows_root:
-        return [{
-            "severity": "warning",
-            "check": "contradiction",
-            "file": "(system)",
-            "detail": "WSL contradiction check could not derive a Windows repo path",
-        }]
+        return [
+            {
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": "WSL contradiction check could not derive a Windows repo path",
+            }
+        ]
 
     ps_script = (
         "$ErrorActionPreference='Stop'; "
@@ -496,34 +533,40 @@ def check_contradictions_portable() -> list[dict]:
             timeout=240,
         )
     except Exception as exc:  # noqa: BLE001
-        return [{
-            "severity": "warning",
-            "check": "contradiction",
-            "file": "(system)",
-            "detail": f"WSL contradiction delegation failed: {exc}",
-        }]
+        return [
+            {
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"WSL contradiction delegation failed: {exc}",
+            }
+        ]
 
     if proc.returncode != 0:
         stderr = decode_windows_output(proc.stderr).strip()
         stdout = decode_windows_output(proc.stdout).strip()
         detail = stderr or stdout or f"exit {proc.returncode}"
-        return [{
-            "severity": "warning",
-            "check": "contradiction",
-            "file": "(system)",
-            "detail": f"Windows contradiction runtime failed: {detail}",
-        }]
+        return [
+            {
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"Windows contradiction runtime failed: {detail}",
+            }
+        ]
 
     try:
         stdout = decode_windows_output(proc.stdout).strip()
         return json.loads(stdout or "[]")
     except json.JSONDecodeError as exc:
-        return [{
-            "severity": "warning",
-            "check": "contradiction",
-            "file": "(system)",
-            "detail": f"Invalid contradiction JSON from Windows runtime: {exc}",
-        }]
+        return [
+            {
+                "severity": "warning",
+                "check": "contradiction",
+                "file": "(system)",
+                "detail": f"Invalid contradiction JSON from Windows runtime: {exc}",
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------

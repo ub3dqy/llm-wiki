@@ -1,4 +1,5 @@
 """Query: search the knowledge base and optionally file answers as Q&A articles."""
+
 from __future__ import annotations
 
 import argparse
@@ -95,7 +96,9 @@ def score_query_candidate(path: Path, tokens: set[str]) -> int:
     return int(score * freshness_factor)
 
 
-def build_query_candidates(question: str, limit: int = MAX_QUERY_CANDIDATES) -> list[dict[str, str | int]]:
+def build_query_candidates(
+    question: str, limit: int = MAX_QUERY_CANDIDATES
+) -> list[dict[str, str | int]]:
     """Return likely relevant articles with confidence metadata."""
     tokens = tokenize(question)
     if not tokens:

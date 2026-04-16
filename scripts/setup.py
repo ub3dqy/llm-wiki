@@ -3,6 +3,7 @@
 Usage:
     uv run python scripts/setup.py [--dry-run] [--force]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,8 +39,14 @@ MINIMAL_LOG = "# Wiki Operations Log\n\n"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap the wiki structure for a fresh clone")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be created without writing files")
-    parser.add_argument("--force", action="store_true", help="Recreate index.md and project_aliases.local.json from examples")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be created without writing files"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Recreate index.md and project_aliases.local.json from examples",
+    )
     return parser.parse_args()
 
 

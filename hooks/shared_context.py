@@ -9,6 +9,7 @@ Reads cwd from stdin to determine the current project, then injects:
 
 This runs for ALL projects — the wiki is global.
 """
+
 from __future__ import annotations
 
 import json
@@ -86,7 +87,9 @@ def get_project_articles(project_name: str) -> list[tuple[str, str]]:
     for article in sorted(WIKI_DIR.rglob("*.md")):
         fm = parse_frontmatter(article)
         raw_project = fm.get("project", "")
-        projects = [p.strip().lower().replace(" ", "-").replace("_", "-") for p in raw_project.split(",")]
+        projects = [
+            p.strip().lower().replace(" ", "-").replace("_", "-") for p in raw_project.split(",")
+        ]
 
         if normalized in projects:
             rel = article.relative_to(WIKI_DIR)
@@ -120,8 +123,12 @@ def get_recent_changes() -> list[dict]:
         slug = str(rel).replace("\\", "/").replace(".md", "")
 
         try:
-            updated_date = datetime.strptime(updated_str, "%Y-%m-%d").date() if updated_str else None
-            created_date = datetime.strptime(created_str, "%Y-%m-%d").date() if created_str else None
+            updated_date = (
+                datetime.strptime(updated_str, "%Y-%m-%d").date() if updated_str else None
+            )
+            created_date = (
+                datetime.strptime(created_str, "%Y-%m-%d").date() if created_str else None
+            )
         except ValueError:
             continue
 
@@ -311,7 +318,9 @@ def build_context(cwd: str = "") -> str:
         SECTION_BUDGETS["header"],
     )
     instructions = trim_text(INSTRUCTIONS, SECTION_BUDGETS["instructions"])
-    project_section = build_project_section(project_name, SECTION_BUDGETS["project"]) if project_name else ""
+    project_section = (
+        build_project_section(project_name, SECTION_BUDGETS["project"]) if project_name else ""
+    )
     recent_changes = trim_text(
         format_recent_changes(get_recent_changes()),
         SECTION_BUDGETS["recent_changes"],
@@ -322,7 +331,14 @@ def build_context(cwd: str = "") -> str:
         SECTION_BUDGETS["recent_log"],
     )
 
-    for section in (header, instructions, project_section, recent_changes, index_section, recent_log):
+    for section in (
+        header,
+        instructions,
+        project_section,
+        recent_changes,
+        index_section,
+        recent_log,
+    ):
         if section.strip():
             parts.append(section)
 

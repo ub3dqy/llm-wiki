@@ -3,6 +3,7 @@
 Reads unprocessed daily/ logs and uses Claude Agent SDK to create/update
 articles in wiki/concepts/, wiki/connections/, and wiki/qa/.
 """
+
 from __future__ import annotations
 
 import argparse

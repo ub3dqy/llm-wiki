@@ -3,6 +3,7 @@
 Scans project structure (package.json, README, configs, src/ tree)
 and uses Claude Agent SDK to create starter wiki articles.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -120,7 +121,9 @@ async def seed_wiki(project_info: dict, project_name: str) -> None:
 
     tree_context = ""
     if project_info["src_tree"]:
-        tree_context = "\n### Directory Structure\n```\n" + "\n".join(project_info["src_tree"]) + "\n```\n"
+        tree_context = (
+            "\n### Directory Structure\n```\n" + "\n".join(project_info["src_tree"]) + "\n```\n"
+        )
 
     timestamp = now_iso()
 
@@ -137,7 +140,7 @@ starter wiki articles for this project.
 
 ## Project: {project_name}
 
-Path: {project_info['path']}
+Path: {project_info["path"]}
 
 ## Project Files
 
@@ -167,7 +170,7 @@ Create wiki articles for this project following the schema:
 5. **Append to log.md** at `{LOG_FILE}`:
    ```
    ## [{timestamp}] seed | {project_name}
-   - Source: project scan of {project_info['path']}
+   - Source: project scan of {project_info["path"]}
    - Articles created: [[...]]
    - Articles updated: [[...]]
    ```
@@ -210,6 +213,7 @@ Create wiki articles for this project following the schema:
     # Rebuild index with annotations
     try:
         from rebuild_index import rebuild_and_write_index
+
         rebuild_and_write_index()
         print("Index enriched with project tags and word counts.")
     except Exception:

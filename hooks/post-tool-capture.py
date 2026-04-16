@@ -3,6 +3,7 @@
 Runs asynchronously (non-blocking). Captures git commits, test runs,
 and other significant Bash commands as micro-entries in the daily log.
 """
+
 from __future__ import annotations
 
 import json

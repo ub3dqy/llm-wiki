@@ -12,6 +12,7 @@ Usage:
     uv run python scripts/wiki_cli.py rebuild            # rebuild index
     uv run python scripts/wiki_cli.py seed <path>        # seed from project
 """
+
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ from runtime_utils import find_uv
 from utils import build_article_metadata_map, list_daily_logs, list_wiki_articles
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
+
 
 def get_last_compile_marker(state: dict) -> str:
     """Return the most recent real compile timestamp from state."""

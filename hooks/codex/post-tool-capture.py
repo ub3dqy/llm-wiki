@@ -7,6 +7,7 @@ NOTE:
 - Only Bash tools are intercepted (not Write, MCP, WebSearch)
 - Same tool_name and tool_input format as Claude Code
 """
+
 from __future__ import annotations
 
 import importlib.util

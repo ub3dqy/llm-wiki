@@ -233,7 +233,9 @@ def frontmatter_sources_include_prefix(raw_sources: str, prefix: str) -> bool:
     normalized_prefix = prefix.strip()
     if not normalized_prefix:
         return False
-    return any(source.startswith(normalized_prefix) for source in parse_frontmatter_list(raw_sources))
+    return any(
+        source.startswith(normalized_prefix) for source in parse_frontmatter_list(raw_sources)
+    )
 
 
 def get_article_projects(path: Path) -> list[str]:

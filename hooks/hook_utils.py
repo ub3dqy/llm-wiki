@@ -1,4 +1,5 @@
 """Shared utilities for Claude Code and Codex hooks."""
+
 from __future__ import annotations
 
 import json
@@ -313,7 +314,7 @@ def extract_conversation_context(
         context = context[-max_chars:]
         boundary = context.find("\n**")
         if boundary > 0:
-            context = context[boundary + 1:]
+            context = context[boundary + 1 :]
 
     if not context.strip():
         logging.info(

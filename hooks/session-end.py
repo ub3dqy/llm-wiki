@@ -5,6 +5,7 @@ and launches flush.py as a detached background process.
 
 Includes debounce to prevent cascading spawns when many sessions end at once.
 """
+
 from __future__ import annotations
 
 import logging

@@ -3,6 +3,7 @@
 Uses the same content-length threshold as session-end.py so short but meaningful
 CLI sessions can still be captured when they carry enough substance.
 """
+
 from __future__ import annotations
 
 import logging

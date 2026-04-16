@@ -6,6 +6,7 @@ Usage:
     uv run python scripts/rebuild_index.py --dry-run   # print to stdout
     uv run python scripts/rebuild_index.py --check     # exit 1 if out of date
 """
+
 from __future__ import annotations
 
 import argparse
@@ -141,7 +142,9 @@ def build_by_project_section(meta: dict[str, dict], enriched_lines: list[str]) -
     for slug, info in sorted(meta.items()):
         projects = info.get("projects", [])
         # Use enriched line if available, else build a basic one
-        display = slug_to_line.get(slug, f"- [[{slug}]] — {info.get('title', slug)} ({info['word_count']}w)")
+        display = slug_to_line.get(
+            slug, f"- [[{slug}]] — {info.get('title', slug)} ({info['word_count']}w)"
+        )
 
         if not projects:
             untagged.append(display)
