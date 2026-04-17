@@ -30,5 +30,5 @@ extend-select = ["I"]
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-pythonpath = ["scripts"]
+pythonpath = ["scripts", "hooks"]
 addopts = "-ra --strict-markers --tb=short"
