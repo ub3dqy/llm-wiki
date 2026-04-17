@@ -436,7 +436,7 @@ Linux docker-desktop 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu
 
 ```text
 HOME=/root
-NAME=ONLYHOME
+NAME=<host>
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PWD=/tmp/docker-desktop-root/run/desktop/mnt/host/e/Project/memory claude/memory claude
 ```

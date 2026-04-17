@@ -12,7 +12,7 @@ status: completed-with-discrepancies
 ### 0.1 Environment snapshot
 
 ```text
-Linux ONLYHOME 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+Linux <host> 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
 whoami: ${USER}
 HOME: <user-home>
 uv: uv 0.11.6 (x86_64-unknown-linux-gnu)
