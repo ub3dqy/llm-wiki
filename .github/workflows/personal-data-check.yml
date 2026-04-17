@@ -13,20 +13,20 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Check for personal data in tracked files
         run: |
           # Scan all tracked files except this workflow itself
           echo "Scanning all tracked files for personal data patterns..."
-          FOUND=$(git ls-files | grep -v 'personal-data-check.yml' | xargs grep -rlP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' 2>/dev/null || true)
+          FOUND=$(git ls-files -z | grep -zv 'personal-data-check.yml' | xargs -0 grep -lP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' 2>/dev/null || true)
 
           if [ -n "$FOUND" ]; then
             echo "::error::Personal data found in the following files:"
             echo "$FOUND"
             echo ""
             echo "Details:"
-            echo "$FOUND" | xargs grep -nP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' 2>/dev/null || true
+            printf '%s\n' "$FOUND" | xargs -d '\n' grep -nP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' 2>/dev/null || true
             exit 1
           fi
 
