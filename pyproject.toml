@@ -26,3 +26,9 @@ extend-select = ["I"]
 "hooks/hook_utils.py" = ["I"]
 "hooks/pre-compact.py" = ["I"]
 "hooks/session-end.py" = ["I"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = "-ra --strict-markers --tb=short"
