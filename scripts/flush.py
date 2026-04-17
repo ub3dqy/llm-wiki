@@ -11,6 +11,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -44,6 +45,19 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [flush] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+_API_KEY_PATTERNS = [
+    re.compile(r"sk-ant-[A-Za-z0-9_-]+"),
+    re.compile(r"ghp_[A-Za-z0-9]+"),
+    re.compile(r"ghs_[A-Za-z0-9]+"),
+]
+
+
+def _scrub_secrets(text: str) -> str:
+    """Redact API-key-shaped tokens before writing diagnostic logs."""
+    for pattern in _API_KEY_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -195,11 +209,11 @@ async def run_flush(context: str, session_id: str, project_name: str = "unknown"
         ProcessError = None  # type: ignore[assignment,misc]
 
     def _log_cli_stderr(line: str) -> None:
-        """Forward bundled Claude CLI stderr into flush.log for diagnostics."""
+        """Forward bundled Claude CLI stderr into flush.log with secret scrubbing."""
         try:
             for subline in line.splitlines():
                 if subline.strip():
-                    logging.info("[agent-stderr] %s", subline)
+                    logging.info("[agent-stderr] %s", _scrub_secrets(subline))
         except Exception:
             pass
 
