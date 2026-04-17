@@ -11,6 +11,9 @@ on:
       - 'index.md'
       - 'scripts/**'
       - 'hooks/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/wiki-lint.yml'
   pull_request:
     branches: [master, main]
 
