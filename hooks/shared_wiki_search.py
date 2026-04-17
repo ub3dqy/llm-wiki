@@ -245,7 +245,7 @@ def score_article(
             score += 5
 
     updated_raw = fm.get("updated", "")
-    if updated_raw:
+    if updated_raw and matched_keywords >= 1:
         try:
             updated_date = datetime.strptime(updated_raw, "%Y-%m-%d").date()
             if updated_date >= (datetime.now(WIKI_TIMEZONE).date() - timedelta(days=14)):
