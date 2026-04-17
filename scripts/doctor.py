@@ -34,6 +34,7 @@ INDEX_FILE = ROOT_DIR / "index.md"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 FLUSH_LOG = SCRIPTS_DIR / "flush.log"
 CAPTURE_HEALTH_WINDOW_DAYS = 7
+LINT_SUBPROCESS_TIMEOUT_SEC = 180  # ~3x per-lint-call margin over current WSL baseline
 
 
 @dataclass
@@ -624,7 +625,9 @@ def check_index_health() -> CheckResult:
 
 
 def check_structural_lint() -> CheckResult:
-    ok, output = run_script_check("lint.py", ["--structural-only"], timeout=60)
+    ok, output = run_script_check(
+        "lint.py", ["--structural-only"], timeout=LINT_SUBPROCESS_TIMEOUT_SEC
+    )
     if not ok:
         return CheckResult("structural_lint", False, output)
 
@@ -724,7 +727,9 @@ def check_wiki_cli_status_smoke() -> CheckResult:
 
 
 def check_wiki_cli_lint_smoke() -> CheckResult:
-    ok, output = run_script_check("wiki_cli.py", ["lint", "--structural-only"], timeout=60)
+    ok, output = run_script_check(
+        "wiki_cli.py", ["lint", "--structural-only"], timeout=LINT_SUBPROCESS_TIMEOUT_SEC
+    )
     if not ok:
         return CheckResult("wiki_cli_lint_smoke", False, output)
 
