@@ -86,6 +86,8 @@ def slugify(text: str) -> str:
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+_WIKI_ROOT = WIKI_DIR.resolve()
+_WIKI_PARENT = WIKI_DIR.parent.resolve()
 
 
 def extract_wikilinks(content: str) -> list[str]:
@@ -120,13 +122,17 @@ def content_has_wikilink_target(content: str, link_target: str) -> bool:
 
 
 def wiki_article_exists(link: str) -> bool:
-    """Check whether a wikilink target resolves to a real file."""
-    candidate = WIKI_DIR / f"{link}.md"
-    if candidate.exists():
+    """Check whether a wikilink target resolves to a real file within the repo tree."""
+    candidate = (WIKI_DIR / f"{link}.md").resolve()
+    if candidate.is_relative_to(_WIKI_ROOT) and candidate.exists():
         return True
-    # try without wiki/ prefix (link may already include subfolder)
-    candidate2 = WIKI_DIR.parent / f"{link}.md"
-    return candidate2.exists()
+
+    # Try from repo root for links that already include the wiki/ prefix.
+    candidate2 = (WIKI_DIR.parent / f"{link}.md").resolve()
+    if candidate2.is_relative_to(_WIKI_PARENT) and candidate2.exists():
+        return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------

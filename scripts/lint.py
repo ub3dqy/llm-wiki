@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import ipaddress
 import json
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -38,6 +40,7 @@ from utils import (
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ADVISORY_BANNER = "[ADVISORY] Contradiction check results are non-deterministic and must not be used as a merge gate."
+_WIKI_ROOT = WIKI_DIR.resolve()
 
 _ARTICLE_LIST_CACHE: list[Path] | None = None
 _ARTICLE_TEXT_CACHE: dict[Path, str] = {}
@@ -344,6 +347,40 @@ def _is_unstable_url(url: str) -> bool:
     return any(pattern.search(url) for pattern in _UNSTABLE_URL_PATTERNS)
 
 
+_SSRF_REFUSED_DETAIL = "SSRF guard: target resolves to private/loopback/link-local/reserved IP"
+
+
+def _is_ssrf_target(url: str) -> tuple[bool, str]:
+    """Return whether a URL resolves to a non-public network target."""
+    parsed = urlsplit(url)
+    host = parsed.hostname
+    if not host:
+        return True, "invalid URL (no host)"
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return True, _SSRF_REFUSED_DETAIL
+        return False, ""
+
+    try:
+        addrinfo = socket.getaddrinfo(host, parsed.port or 80, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return False, ""
+
+    for _family, _socktype, _proto, _canonname, sockaddr in addrinfo:
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            continue
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return True, _SSRF_REFUSED_DETAIL
+    return False, ""
+
+
 def _is_newer_last_modified(stored_value: str, current_value: str) -> bool:
     stored_dt = _parse_http_datetime(stored_value)
     current_dt = _parse_http_datetime(current_value)
@@ -400,6 +437,11 @@ def _check_source_url(
         "last_checked": today_iso(),
         "last_status": str(stored.get("last_status", "") or ""),
     }
+
+    blocked, reason = _is_ssrf_target(url)
+    if blocked:
+        entry["last_status"] = "refused"
+        return "refused", reason, entry
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -514,6 +556,15 @@ def check_source_drift(timeout: float = 10.0, delay: float = 2.0) -> list[dict]:
                         "detail": f"rot: {url} — {detail}",
                     }
                 )
+            elif classification == "refused":
+                issues.append(
+                    {
+                        "severity": "warning",
+                        "check": "source_ssrf_refused",
+                        "file": str(rel).replace("\\", "/"),
+                        "detail": f"refused: {url} — {detail}",
+                    }
+                )
 
     state["source_drift_validators"] = cache
     save_state(state)
@@ -530,8 +581,8 @@ def check_missing_backlinks() -> list[dict]:
         for link in _article_wikilinks(article):
             if link.startswith("daily/"):
                 continue
-            target_path = WIKI_DIR / f"{link}.md"
-            if target_path.exists():
+            target_path = (WIKI_DIR / f"{link}.md").resolve()
+            if target_path.is_relative_to(_WIKI_ROOT) and target_path.exists():
                 if source_link not in _article_wikilinks(target_path):
                     issues.append(
                         {
