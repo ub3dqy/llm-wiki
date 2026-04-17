@@ -27,14 +27,14 @@ from hook_utils import (
 @pytest.mark.parametrize(
     "cwd,expected",
     [
-        pytest.param("E:\\Project\\foo", "E:/Project/foo", id="windows-backslash"),
-        pytest.param("E:/Project/foo", "E:/Project/foo", id="windows-forward"),
-        pytest.param("/mnt/e/Project/foo", "E:/Project/foo", id="wsl-mnt"),
-        pytest.param("/e/Project/foo", "E:/Project/foo", id="git-bash"),
+        pytest.param("E:\\project\\foo", "E:/project/foo", id="windows-backslash"),
+        pytest.param("E:/project/foo", "E:/project/foo", id="windows-forward"),
+        pytest.param("/mnt/e/project/foo", "E:/project/foo", id="wsl-mnt"),
+        pytest.param("/e/project/foo", "E:/project/foo", id="git-bash"),
         pytest.param("/usr/local/bin", "/usr/local/bin", id="posix-no-drive"),
         pytest.param("", "", id="empty"),
-        pytest.param('"E:\\Project\\foo"', "E:/Project/foo", id="quoted-double"),
-        pytest.param("E:\\\\Project\\\\foo", "E:/Project/foo", id="double-separators-collapsed"),
+        pytest.param('"E:\\project\\foo"', "E:/project/foo", id="quoted-double"),
+        pytest.param("E:\\\\project\\\\foo", "E:/project/foo", id="double-separators-collapsed"),
     ],
 )
 def test_normalize_cwd(cwd: str, expected: str) -> None:
@@ -48,8 +48,8 @@ def test_normalize_cwd_non_string() -> None:
 @pytest.mark.parametrize(
     "cwd,expected",
     [
-        pytest.param("E:\\Project\\memory", ["Project", "memory"], id="windows-two-parts"),
-        pytest.param("/mnt/e/Project/memory", ["Project", "memory"], id="wsl-same"),
+        pytest.param("E:\\project\\memory", ["project", "memory"], id="windows-two-parts"),
+        pytest.param("/mnt/e/project/memory", ["project", "memory"], id="wsl-same"),
         pytest.param("/usr/local/bin", ["usr", "local", "bin"], id="posix-full"),
         pytest.param("", [], id="empty"),
         pytest.param("E:\\", [], id="root-only"),
