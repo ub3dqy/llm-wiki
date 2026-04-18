@@ -15,7 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from config import WIKI_TIMEZONE  # noqa: E402
-from hook_utils import infer_project_name_from_cwd, parse_frontmatter
+from hook_utils import infer_project_name_from_cwd
+from utils import parse_frontmatter as _path_parse_frontmatter
+from utils import parse_frontmatter_from_text
+
+parse_frontmatter = _path_parse_frontmatter
 
 ROOT = Path(__file__).resolve().parent.parent
 WIKI_DIR = ROOT / "wiki"
@@ -179,14 +183,15 @@ def score_article(
     path: Path, keywords: set[str], phrases: set[str], project_name: str | None = None
 ) -> int:
     """Score an article by exact and partial matches in metadata and body."""
-    fm = parse_frontmatter(path)
+    raw = path.read_text(encoding="utf-8")
+    fm = parse_frontmatter_from_text(raw)
     title = fm.get("title", "").lower()
     tags = fm.get("tags", "").lower()
     project = fm.get("project", "").lower()
     aliases = " ".join(_extract_aliases(fm.get("aliases", ""))).lower()
     slug = path.stem.lower()
     slug_spaced = slug.replace("-", " ").replace("_", " ")
-    body = _strip_frontmatter(path.read_text(encoding="utf-8"))
+    body = _strip_frontmatter(raw)
     snippet = body[:900].lower()
 
     score = 0
@@ -307,7 +312,7 @@ def format_matched_articles(
         content = path.read_text(encoding="utf-8")
         rel = path.relative_to(base_dir)
         slug = str(rel).replace("\\", "/").replace(".md", "")
-        fm = parse_frontmatter(path)
+        fm = parse_frontmatter_from_text(content)
         status = (fm.get("status", "active") or "active").lower()
         status_marker = ""
         if status == "superseded":

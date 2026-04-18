@@ -12,7 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import INDEX_FILE, LOG_FILE, QA_DIR, WIKI_DIR, now_iso
-from utils import list_wiki_articles, load_state, parse_frontmatter, read_wiki_index, save_state
+from utils import (
+    list_wiki_articles,
+    load_state,
+    parse_frontmatter_from_text,
+    read_wiki_index,
+    save_state,
+)
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MAX_QUERY_CANDIDATES = 8
@@ -59,15 +65,17 @@ def strip_frontmatter(text: str) -> str:
     return text[end + 3 :].lstrip()
 
 
-def score_query_candidate(path: Path, tokens: set[str]) -> int:
-    """Score an article for no-cost query preview and prompt candidates."""
-    fm = parse_frontmatter(path)
+def _score_query_candidate_with_frontmatter(
+    path: Path, tokens: set[str]
+) -> tuple[int, dict[str, str]]:
+    raw = path.read_text(encoding="utf-8")
+    fm = parse_frontmatter_from_text(raw)
     rel = path.relative_to(WIKI_DIR)
     slug = str(rel).replace("\\", "/").replace(".md", "")
     title = fm.get("title", "")
     tags = fm.get("tags", "")
     project = fm.get("project", "")
-    body = strip_frontmatter(path.read_text(encoding="utf-8"))[:1200]
+    body = strip_frontmatter(raw)[:1200]
 
     title_text = title.lower()
     slug_text = slug.replace("-", " ").replace("_", " ").lower()
@@ -93,7 +101,13 @@ def score_query_candidate(path: Path, tokens: set[str]) -> int:
         "archived": 0.05,
     }.get(status, 1.0)
 
-    return int(score * freshness_factor)
+    return int(score * freshness_factor), fm
+
+
+def score_query_candidate(path: Path, tokens: set[str]) -> int:
+    """Score an article for no-cost query preview and prompt candidates."""
+    score, _ = _score_query_candidate_with_frontmatter(path, tokens)
+    return score
 
 
 def build_query_candidates(
@@ -106,12 +120,11 @@ def build_query_candidates(
 
     candidates: list[dict[str, str | int]] = []
     for article in list_wiki_articles():
-        score = score_query_candidate(article, tokens)
+        score, fm = _score_query_candidate_with_frontmatter(article, tokens)
         if score <= 0:
             continue
         rel = article.relative_to(WIKI_DIR)
         slug = str(rel).replace("\\", "/").replace(".md", "")
-        fm = parse_frontmatter(article)
         candidates.append(
             {
                 "slug": slug,

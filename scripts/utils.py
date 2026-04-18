@@ -223,13 +223,12 @@ def get_article_word_count(path: Path) -> int:
 _FM_LINE_RE = re.compile(r"^(\w[\w-]*):\s*(.+)$")
 
 
-def parse_frontmatter(path: Path) -> dict[str, str]:
-    """Parse YAML frontmatter from a wiki article.
+def parse_frontmatter_from_text(text: str) -> dict[str, str]:
+    """Parse YAML frontmatter from already-loaded article text.
 
     Returns a dict of key → raw string value.
     Returns empty dict if no frontmatter found.
     """
-    text = path.read_text(encoding="utf-8")
     if not text.startswith("---"):
         return {}
     end = text.find("---", 3)
@@ -241,6 +240,14 @@ def parse_frontmatter(path: Path) -> dict[str, str]:
         if m:
             result[m.group(1)] = m.group(2).strip()
     return result
+
+
+def parse_frontmatter(path: Path) -> dict[str, str]:
+    """Parse YAML frontmatter from a wiki article.
+
+    Thin wrapper over `parse_frontmatter_from_text` that reads the file first.
+    """
+    return parse_frontmatter_from_text(path.read_text(encoding="utf-8"))
 
 
 def parse_frontmatter_list(raw_value: str) -> list[str]:
