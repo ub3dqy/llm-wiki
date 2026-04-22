@@ -13,6 +13,7 @@ No production behavior changes. Measurement only.
 
 from __future__ import annotations
 
+import functools
 import sys
 import time
 from collections import defaultdict
@@ -33,6 +34,7 @@ _bytes_read: list[int] = []
 def _wrap(phase_name: str, func):
     """Wrap callable with cumulative timing accumulator."""
 
+    @functools.wraps(func)
     def wrapped(*args, **kwargs):
         t0 = time.perf_counter()
         result = func(*args, **kwargs)
@@ -40,7 +42,6 @@ def _wrap(phase_name: str, func):
         _counts[phase_name] += 1
         return result
 
-    wrapped.__wrapped__ = func
     return wrapped
 
 
@@ -73,7 +74,7 @@ def profile_single_run(prompt: str) -> dict:
     orig_strip = shared_wiki_search._strip_frontmatter
     orig_score = shared_wiki_search.score_article
 
-    _Path.read_text = _make_timed_read_text(orig_read)
+    _Path.read_text = _make_timed_read_text(orig_read)  # type: ignore[method-assign]
     hook_utils.parse_frontmatter = _wrap("parse_frontmatter", orig_parse)
     shared_wiki_search.parse_frontmatter = hook_utils.parse_frontmatter
     shared_wiki_search._strip_frontmatter = _wrap("strip_frontmatter", orig_strip)
@@ -116,7 +117,7 @@ def profile_single_run(prompt: str) -> dict:
 
         total_sec = time.perf_counter() - t_total_start
     finally:
-        _Path.read_text = orig_read
+        _Path.read_text = orig_read  # type: ignore[method-assign]
         hook_utils.parse_frontmatter = orig_parse
         shared_wiki_search.parse_frontmatter = orig_parse_sw
         shared_wiki_search._strip_frontmatter = orig_strip
