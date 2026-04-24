@@ -9,6 +9,7 @@ from utils import (
     content_has_wikilink_target,
     extract_wikilinks,
     frontmatter_sources_include_prefix,
+    get_article_projects,
     get_article_word_count,
     parse_frontmatter,
     parse_frontmatter_list,
@@ -81,6 +82,35 @@ def test_content_has_wikilink_target(content: str, target: str, expected: bool) 
 )
 def test_parse_frontmatter_list(raw: str, expected: list[str]) -> None:
     assert parse_frontmatter_list(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "frontmatter_value,expected",
+    [
+        pytest.param(
+            "[codex-easy-start, site-tiretop, workflow]",
+            ["codex-easy-start", "site-tiretop", "workflow"],
+            id="list-form-unquoted",
+        ),
+        pytest.param(
+            "codex-easy-start, site-tiretop, workflow",
+            ["codex-easy-start", "site-tiretop", "workflow"],
+            id="scalar-csv",
+        ),
+        pytest.param("memory-claude", ["memory-claude"], id="scalar-single"),
+        pytest.param("", [], id="empty"),
+        pytest.param('["a", "b"]', ["a", "b"], id="list-form-quoted"),
+    ],
+)
+def test_get_article_projects_handles_list_and_scalar(
+    tmp_path: Path, frontmatter_value: str, expected: list[str]
+) -> None:
+    article = tmp_path / "a.md"
+    article.write_text(
+        f"---\ntitle: T\ntype: concept\nproject: {frontmatter_value}\n---\nbody\n",
+        encoding="utf-8",
+    )
+    assert get_article_projects(article) == expected
 
 
 @pytest.mark.parametrize(

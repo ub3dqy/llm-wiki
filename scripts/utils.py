@@ -274,13 +274,16 @@ def frontmatter_sources_include_prefix(raw_sources: str, prefix: str) -> bool:
 def get_article_projects(path: Path) -> list[str]:
     """Return list of project tags from article frontmatter.
 
-    Handles both 'project: foo' and 'project: foo, bar' formats.
+    Handles all three frontmatter shapes:
+      - 'project: foo'
+      - 'project: foo, bar'
+      - 'project: [foo, bar]'   (YAML list form, possibly quoted)
+
+    Delegates to ``parse_frontmatter_list`` so bracket/quote stripping
+    stays consistent with other frontmatter-list consumers.
     """
     fm = parse_frontmatter(path)
-    raw = fm.get("project", "").strip()
-    if not raw:
-        return []
-    return [p.strip() for p in raw.split(",") if p.strip()]
+    return parse_frontmatter_list(fm.get("project", ""))
 
 
 def build_article_metadata_map() -> dict[str, dict]:

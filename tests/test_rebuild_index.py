@@ -139,3 +139,69 @@ def test_build_by_project_section_compact_after_max_detailed() -> None:
     assert "### p14\n" in result
     assert "### p15 (1 articles)\n" in result
     assert "### p16 (1 articles)\n" in result
+
+
+def test_enrich_index_line_idempotent_only_for_clean_projects() -> None:
+    """Unit-level contract for ``enrich_index_line``.
+
+    Broken projects (stray bracket chars baked into strings) cause
+    ``enrich_index_line`` to grow annotations on successive passes, because
+    ``strip_existing_annotations`` only peels one `[...]` layer and the
+    double-bracket case `[[a, b, c]]` leaves inner brackets behind. Clean
+    projects stay idempotent.
+
+    This test pins the function's own contract. It does NOT on its own
+    guard the upstream ``get_article_projects`` fix.
+    """
+    original = "- [[concepts/foo]] — Foo"
+
+    broken_projects = ["[a", "b", "c]"]
+    meta_broken = {
+        "concepts/foo": {"projects": broken_projects, "word_count": 100, "title": "Foo"},
+    }
+    pass1_broken = enrich_index_line(original, meta_broken)
+    pass2_broken = enrich_index_line(pass1_broken, meta_broken)
+    assert pass1_broken != pass2_broken, (
+        "Broken projects must expose non-idempotency in enrich_index_line. "
+        "If pass1 == pass2 for broken input, enrich_index_line has been changed "
+        "to swallow bracket chars."
+    )
+
+    clean_projects = ["a", "b", "c"]
+    meta_clean = {
+        "concepts/foo": {"projects": clean_projects, "word_count": 100, "title": "Foo"},
+    }
+    pass1_clean = enrich_index_line(original, meta_clean)
+    pass2_clean = enrich_index_line(pass1_clean, meta_clean)
+    pass3_clean = enrich_index_line(pass2_clean, meta_clean)
+    assert pass1_clean == pass2_clean == pass3_clean, (
+        "Clean projects must stabilise after the first enrich pass."
+    )
+
+
+def test_list_form_frontmatter_end_to_end_stays_idempotent(tmp_path) -> None:
+    """Guard against reverting ``get_article_projects`` back to naive split."""
+    from utils import get_article_projects
+
+    article = tmp_path / "foo.md"
+    article.write_text(
+        "---\ntitle: Foo\ntype: concept\nproject: [alpha, beta, gamma]\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    projects = get_article_projects(article)
+    assert projects == ["alpha", "beta", "gamma"], (
+        f"get_article_projects regressed: expected clean list, got {projects!r}"
+    )
+
+    meta = {"concepts/foo": {"projects": projects, "word_count": 10, "title": "Foo"}}
+    line = "- [[concepts/foo]] — Foo"
+    pass1 = enrich_index_line(line, meta)
+    pass2 = enrich_index_line(pass1, meta)
+    pass3 = enrich_index_line(pass2, meta)
+
+    assert "[[alpha" not in pass1 and "gamma]]" not in pass1, (
+        f"Double-bracket annotation detected in enriched line: {pass1!r}"
+    )
+    assert pass1 == pass2 == pass3, (
+        "End-to-end pipeline must be idempotent for list-form `project:` frontmatter."
+    )
