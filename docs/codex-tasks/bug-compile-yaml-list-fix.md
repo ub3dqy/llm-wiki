@@ -47,7 +47,7 @@ Not applicable this cycle. See planning-audit §4.
 ### Step P1 — Git baseline (capture snapshot for delta check)
 
 ```bash
-cd "/mnt/e/Project/memory claude/memory claude"
+cd "<repo-root>"
 git rev-parse HEAD
 git status --short | sort > /tmp/git_status_pre.txt
 cat /tmp/git_status_pre.txt
@@ -361,8 +361,8 @@ tail -10 /tmp/wiki_cli_status.txt
 # Expected: exits 0, summary-style output with article counts.
 
 # PDC detector — MUST use PCRE (-lP) to match CI workflow .github/workflows/personal-data-check.yml:21
-# exactly. Note the CI's `C:\\\\Users` double-escape is bash-level; inside the shell string below it
-# reaches grep as the PCRE pattern `C:\\Users` which matches the literal `C:\Users`.
+# exactly. Note that the CI pattern uses bash-level escaping before it reaches
+# grep as a PCRE pattern for the Windows-home-path literal.
 git ls-files -z | grep -zv 'personal-data-check.yml' \
   | xargs -0 grep -lP '/mnt/[a-z]/[A-Z]|[A-Z]:/[A-Z]|C:\\\\Users' | sort > /tmp/pdc_post.txt
 

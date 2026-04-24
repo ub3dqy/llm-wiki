@@ -604,7 +604,7 @@ post_count = 91, delta = +7 expected: 5 parametrized cases + 2 discrete function
 ============================= test session starts ==============================
 platform linux -- Python 3.14.4, pytest-9.0.3, pluggy-1.6.0 -- /home/dmaka/.cache/llm-wiki/.venv/bin/python3
 cachedir: .pytest_cache
-rootdir: /mnt/e/Project/memory claude/memory claude
+rootdir: <repo-root>
 configfile: pyproject.toml
 plugins: anyio-4.13.0
 collecting ... collected 7 items
