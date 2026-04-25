@@ -1,10 +1,10 @@
 # Work Verification Report — bug-compile-yaml-list-fix
 
-**Plan**: `bug-compile-yaml-list-fix.md` (sibling) v5  
-**Planning audit**: `bug-compile-yaml-list-fix-planning-audit.md` (sibling)  
-**Execution report**: `bug-compile-yaml-list-fix-report.md` (sibling)  
-**Verifier**: Codex  
-**Verification date**: `2026-04-24`  
+**Plan**: `bug-compile-yaml-list-fix.md` (sibling) v5
+**Planning audit**: `bug-compile-yaml-list-fix-planning-audit.md` (sibling)
+**Execution report**: `bug-compile-yaml-list-fix-report.md` (sibling)
+**Verifier**: Codex
+**Verification date**: `2026-04-24`
 **Verdict**: `pass-with-noted-residuals`
 
 ---
