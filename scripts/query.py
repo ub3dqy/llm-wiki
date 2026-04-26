@@ -16,6 +16,7 @@ from utils import (
     list_wiki_articles,
     load_state,
     parse_frontmatter_from_text,
+    parse_frontmatter_list,
     read_wiki_index,
     save_state,
 )
@@ -74,7 +75,7 @@ def _score_query_candidate_with_frontmatter(
     slug = str(rel).replace("\\", "/").replace(".md", "")
     title = fm.get("title", "")
     tags = fm.get("tags", "")
-    project = fm.get("project", "")
+    project = " ".join(parse_frontmatter_list(fm.get("project", "")))
     body = strip_frontmatter(raw)[:1200]
 
     title_text = title.lower()

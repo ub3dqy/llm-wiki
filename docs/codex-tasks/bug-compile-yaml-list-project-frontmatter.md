@@ -4,6 +4,7 @@
 **Tracking doc**: this file (for future task spawn).
 **Severity**: moderate — silent index_health FAIL, workaround exists but requires manual per-article normalization.
 **Out of P1 scope (wiki-health-2026-04-21)**: Codex normalized the offending article by hand to unblock P1 acceptance. Root cause deferred.
+**Follow-up status (2026-04-27)**: locally completed via prompt/query/lint hardening plus cleanup of the remaining list-form wiki pages.
 
 ---
 
@@ -69,3 +70,26 @@ Every compile that generates a connection article spanning ≥2 projects is like
 - `scripts/lint.py` — could gain new check
 - `wiki/connections/tool-enforcement-dual-failure.md` — manually normalized example of the fix
 - `docs/codex-tasks/wiki-health-2026-04-21/p1-handoff/report.md` §5.3, §6 — original incident record
+
+---
+
+## Follow-up completion — 2026-04-27
+
+Implemented locally:
+
+- `scripts/compile.py` prompt now requires `project:` to stay a plain scalar string and explicitly forbids YAML list form for multi-project articles.
+- `scripts/query.py` now normalizes legacy list-form `project:` values through `parse_frontmatter_list(...)`, so retrieval scoring no longer loses project matches on bracketed frontmatter.
+- `scripts/lint.py` now includes an advisory `Project frontmatter shape` structural check that flags `project: [a, b]` and recommends the repo-standard scalar CSV form.
+- Added regression coverage in `tests/test_query.py` and `tests/test_lint.py`.
+- Normalized the remaining repo-local list-form pages:
+  - `wiki/concepts/codex-sandbox-git-write-constraint.md`
+  - `wiki/connections/sandbox-escalation-protocol-gap.md`
+
+Verification run:
+
+- `uv run pytest tests/test_query.py tests/test_lint.py tests/test_utils.py tests/test_rebuild_index.py -q` → `67 passed`
+- `uv run python scripts/lint.py --structural-only` → `Project frontmatter shape: 0 issue(s)`
+
+Deliberate non-change:
+
+- No post-compile auto-rewrite step was added. The current fix direction is prompt prevention plus lint detection, while query/index paths remain tolerant of legacy list-form articles.

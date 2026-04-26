@@ -114,6 +114,12 @@ def _parse_flush_log_events() -> dict[str, object]:
         "fatal_errors": 0,
         "fatal_errors_24h": 0,
         "latest_fatal_ts": None,
+        "flush_fatal_errors": 0,
+        "flush_fatal_errors_24h": 0,
+        "latest_flush_fatal_ts": None,
+        "compile_fatal_errors": 0,
+        "compile_fatal_errors_24h": 0,
+        "latest_compile_fatal_ts": None,
     }
 
     text = FLUSH_LOG.read_text(encoding="utf-8", errors="replace")
@@ -150,6 +156,22 @@ def _parse_flush_log_events() -> dict[str, object]:
             latest = stats["latest_fatal_ts"]
             if latest is None or ts > latest:
                 stats["latest_fatal_ts"] = ts
+            if "[flush]" in tail:
+                stats["flush_fatal_errors"] = int(stats["flush_fatal_errors"]) + 1
+                if ts >= cutoff_24h:
+                    stats["flush_fatal_errors_24h"] = int(stats["flush_fatal_errors_24h"]) + 1
+                latest_flush = stats["latest_flush_fatal_ts"]
+                if latest_flush is None or ts > latest_flush:
+                    stats["latest_flush_fatal_ts"] = ts
+            elif "[compile]" in tail:
+                stats["compile_fatal_errors"] = int(stats["compile_fatal_errors"]) + 1
+                if ts >= cutoff_24h:
+                    stats["compile_fatal_errors_24h"] = int(
+                        stats["compile_fatal_errors_24h"]
+                    ) + 1
+                latest_compile = stats["latest_compile_fatal_ts"]
+                if latest_compile is None or ts > latest_compile:
+                    stats["latest_compile_fatal_ts"] = ts
 
     return stats
 
@@ -256,36 +278,60 @@ def check_flush_pipeline_correctness() -> CheckResult:
     except OSError as exc:
         return CheckResult("flush_pipeline_correctness", False, f"Could not read flush.log: {exc}")
 
-    fatal_errors_7d = int(stats["fatal_errors"])
-    fatal_errors_24h = int(stats["fatal_errors_24h"])
-    latest_fatal_ts = stats["latest_fatal_ts"]
-    if fatal_errors_7d == 0:
+    flush_fatal_errors_7d = int(stats["flush_fatal_errors"])
+    flush_fatal_errors_24h = int(stats["flush_fatal_errors_24h"])
+    latest_flush_fatal_ts = stats["latest_flush_fatal_ts"]
+    compile_fatal_errors_7d = int(stats["compile_fatal_errors"])
+    compile_fatal_errors_24h = int(stats["compile_fatal_errors_24h"])
+    latest_compile_fatal_ts = stats["latest_compile_fatal_ts"]
+
+    compile_note = ""
+    if compile_fatal_errors_7d:
+        latest_compile_detail = (
+            latest_compile_fatal_ts.strftime("%Y-%m-%d %H:%M:%S")
+            if isinstance(latest_compile_fatal_ts, datetime)
+            else "unknown"
+        )
+        if compile_fatal_errors_24h:
+            compile_note = (
+                f" [note: compile residual {compile_fatal_errors_24h} in last 24h / "
+                f"{compile_fatal_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d, "
+                f"latest {latest_compile_detail}]"
+            )
+        else:
+            compile_note = (
+                f" [note: compile residual {compile_fatal_errors_7d} in last "
+                f"{CAPTURE_HEALTH_WINDOW_DAYS}d, latest {latest_compile_detail}]"
+            )
+
+    if flush_fatal_errors_7d == 0:
         return CheckResult(
             "flush_pipeline_correctness",
             True,
-            f"No 'Fatal error in message reader' events in last {CAPTURE_HEALTH_WINDOW_DAYS} days",
+            f"No '[flush] Fatal error in message reader' events in last "
+            f"{CAPTURE_HEALTH_WINDOW_DAYS} days{compile_note}",
         )
 
     latest_detail = (
-        latest_fatal_ts.strftime("%Y-%m-%d %H:%M:%S")
-        if isinstance(latest_fatal_ts, datetime)
+        latest_flush_fatal_ts.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(latest_flush_fatal_ts, datetime)
         else "unknown"
     )
-    if fatal_errors_24h == 0:
+    if flush_fatal_errors_24h == 0:
         return CheckResult(
             "flush_pipeline_correctness",
             True,
-            f"No 'Fatal error in message reader' events in last 24h "
-            f"(historical: {fatal_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d, "
-            f"most recent {latest_detail}, tracked in issue #16)",
+            f"No '[flush] Fatal error in message reader' events in last 24h "
+            f"(historical flush: {flush_fatal_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d, "
+            f"most recent {latest_detail}, tracked in issue #16){compile_note}",
         )
 
     return CheckResult(
         "flush_pipeline_correctness",
         False,
-        f"Last 24h: {fatal_errors_24h} 'Fatal error in message reader' events "
-        f"(7d total: {fatal_errors_7d}, most recent {latest_detail}) "
-        f"— active Bug H regression, investigate issue #16",
+        f"Last 24h: {flush_fatal_errors_24h} '[flush] Fatal error in message reader' events "
+        f"(7d flush total: {flush_fatal_errors_7d}, most recent {latest_detail}) "
+        f"— active Bug H regression, investigate issue #16{compile_note}",
     )
 
 

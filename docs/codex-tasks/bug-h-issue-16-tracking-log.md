@@ -164,6 +164,120 @@ Operational meaning: Bug H is not active in the project-defined current 24-hour 
 
 `candidate for closure review` — both reopen-comment criteria are satisfied, the post-bump [flush]-only success rate is above the 90% threshold, and `doctor --quick` reports no current 24-hour active Bug H event. Do not auto-close: the paper trail should still acknowledge the residual low-rate [flush] failures and the separate [compile] same-SDK residual.
 
+## Snapshot — 2026-04-26 14:53 UTC
+
+### GitHub issue state
+
+- issue state: not refreshed in this run
+- reason: GitHub CLI network access was unavailable in the current sandbox session
+- local paper-trail status: keep open
+
+### Post-bump evidence from `scripts/flush.log`
+
+Command basis:
+
+```text
+POST_FLUSH_OK=1034
+POST_FLUSH_FAIL=31
+LAST_FLUSH_FATAL=2026-04-26 02:35:38
+LAST_FLUSH_OK=2026-04-26 14:53:21
+SUCCESS_RATE=97.09%
+```
+
+Interpretation:
+
+- post-bump [flush]-only success rate remains above the 90% threshold
+- the reopen-comment criteria remain satisfied
+- however, the failure is still active in the current correctness window
+
+### Current active-error signal
+
+From `doctor --quick`:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 4 'Fatal error in message reader' events (7d total: 28, most recent 2026-04-26 02:35:38) — active Bug H regression, investigate issue #16
+```
+
+Operational meaning:
+
+- Bug H is active again in the current 24-hour correctness window
+- issue #16 is not closure-ready despite the aggregate success rate
+
+### Recommendation
+
+`keep open` — the aggregate post-bump success rate is healthy, but the latest `doctor --quick`
+run reports active 24-hour failures. Re-evaluate only after the active window is clean again.
+
+## Snapshot — 2026-04-26 19:37 UTC
+
+### GitHub issue state
+
+- issue state: `OPEN`
+- latest issue update: `2026-04-14T21:40:32Z`
+- remote paper-trail status: unchanged since reopen comment
+
+### Post-bump evidence from `scripts/flush.log`
+
+Command basis:
+
+```text
+POST_FLUSH_OK=1056
+POST_FLUSH_FAIL=31
+LAST_FLUSH_FATAL=2026-04-26 02:35:38
+LAST_FLUSH_OK=2026-04-26 22:36:34
+SUCCESS_RATE=97.15%
+```
+
+### Current active-error signal
+
+From `doctor --quick`:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 4 'Fatal error in message reader' events (7d total: 21, most recent 2026-04-26 02:35:38) — active Bug H regression, investigate issue #16
+```
+
+Interpretation:
+
+- `doctor --quick` counts all `Fatal error in message reader` lines in `scripts/flush.log`, not
+  only `[flush]`
+- in this 24-hour window that means `1` `[compile]` fatal at `2026-04-25 23:24:18` plus `3`
+  `[flush]` fatals at `2026-04-26 00:39:01`, `01:39:40`, and `02:35:38`
+- historical note: this snapshot reflects the pre-2026-04-27 local `doctor.py` behavior before
+  `flush_pipeline_correctness` was narrowed to report `[flush]` counts directly
+
+### Recommendation
+
+`keep open` — no new `[flush]` fatal was observed after `2026-04-26 02:35:38`, but the active
+24-hour correctness window has not cleared yet. Earliest meaningful re-check is after
+`2026-04-27 02:35:38` local log time if no new fatal events appear.
+
+## Snapshot — 2026-04-26 21:26 UTC
+
+### Post-bump evidence from `scripts/flush.log`
+
+Command basis:
+
+```text
+POST_FLUSH_OK=1063
+POST_FLUSH_FAIL=31
+LAST_FLUSH_FATAL=2026-04-26 02:35:38
+LAST_FLUSH_OK=2026-04-27 00:21:23
+SUCCESS_RATE=97.17%
+```
+
+### Current active-error signal
+
+From `doctor --quick` after the local `doctor.py` tag-scope fix:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 3 '[flush] Fatal error in message reader' events (7d flush total: 15, most recent 2026-04-26 02:35:38) — active Bug H regression, investigate issue #16 [note: compile residual 6 in last 7d, latest 2026-04-25 23:24:18]
+```
+
+### Recommendation
+
+`keep open` — the doctor signal is now aligned with issue #16 scope (`[flush]` only), but the
+24-hour flush window still has not cleared. Re-check after `2026-04-27 02:35:38` local log time.
+
 ## Assessment
 
 ### Terminology correction

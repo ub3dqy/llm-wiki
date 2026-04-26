@@ -130,6 +130,9 @@ to create a new article or update an existing one. Use Grep to find related arti
    Use Grep to search for related terms across wiki/
 3. **Create concept articles** in `wiki/concepts/` — one .md file per concept
    - Use YAML frontmatter: title, type (concept), created, updated, sources, confidence, status, project, tags
+   - `project` must be a plain scalar string. For multi-project articles, use comma-separated
+     scalar form like `project: codex-easy-start, site-tiretop, workflow`
+   - Do NOT emit YAML list form for `project` such as `project: [a, b, c]`
    - Use `[[wikilinks]]` for cross-references (e.g. `[[concepts/prisma-migrations]]`)
    - Write in encyclopedia style — neutral, comprehensive
 4. **Create connection articles** in `wiki/connections/` if the log reveals non-obvious

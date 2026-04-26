@@ -655,6 +655,30 @@ def check_provenance_completeness() -> list[dict]:
     return issues
 
 
+def check_project_frontmatter_shape() -> list[dict]:
+    """Advisory: flag list-form `project:` for consistency and prevention."""
+    issues: list[dict] = []
+    for article in _wiki_articles():
+        fm = _article_frontmatter(article)
+        raw_project = str(fm.get("project", "") or "").strip()
+        if not raw_project:
+            continue
+        if raw_project.startswith("[") and raw_project.endswith("]"):
+            rel = article.relative_to(WIKI_DIR)
+            issues.append(
+                {
+                    "severity": "suggestion",
+                    "check": "project_frontmatter_shape",
+                    "file": str(rel),
+                    "detail": (
+                        "List-form `project:` frontmatter detected; prefer scalar CSV form "
+                        "like `project: a, b, c` for consistency and downstream simplicity"
+                    ),
+                }
+            )
+    return issues
+
+
 # ---------------------------------------------------------------------------
 # LLM-based check (costs API credits)
 # ---------------------------------------------------------------------------
@@ -963,6 +987,7 @@ def main() -> int:
         ("Orphan sources", check_orphan_sources),
         ("Stale articles", check_stale_articles),
         ("Freshness review debt", check_freshness_review_debt),
+        ("Project frontmatter shape", check_project_frontmatter_shape),
         ("Missing backlinks", check_missing_backlinks),
         ("Sparse articles", check_sparse_articles),
         ("Provenance completeness", check_provenance_completeness),
