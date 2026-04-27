@@ -218,3 +218,21 @@ Operational consequence:
   `Fatal error in message reader` lines in `scripts/flush.log`, including `[compile]` entries
 - current local code has since been tightened so `flush_pipeline_correctness` reports `[flush]`
   counts for issue #16 and only mentions `[compile]` residuals as context
+
+## 2026-04-27 Bug H Re-check
+
+Codex re-ran the Bug H closure-gate check after the prior `2026-04-27 02:35:38` local-log
+window should have cleared.
+
+Current `doctor --quick` signal:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 1 '[flush] Fatal error in message reader' events (7d flush total: 16, most recent 2026-04-27 11:10:36) — active Bug H regression, investigate issue #16 [note: compile residual 6 in last 7d, latest 2026-04-25 23:24:18]
+```
+
+Operational consequence:
+
+- issue #16 remains `keep-open`, not closure-ready
+- a new `[flush]` fatal at `2026-04-27 11:10:36` reset the meaningful re-check point
+- next local re-check should wait until after `2026-04-28 11:10:36` local log time if no newer
+  `[flush]` fatal appears

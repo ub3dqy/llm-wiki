@@ -325,3 +325,41 @@ When revisiting this issue, append only:
 - latest fatal timestamp
 - `doctor --quick` Bug H line
 - short conclusion: `keep open` or `candidate for closure review`
+
+## Snapshot — 2026-04-27 10:09 UTC
+
+### Post-bump evidence from `scripts/flush.log`
+
+Command basis:
+
+```text
+POST_FLUSH_OK=1196
+POST_FLUSH_FAIL=32
+LAST_FLUSH_FATAL=2026-04-27 11:10:36
+LAST_FLUSH_OK=2026-04-27 13:08:08
+SUCCESS_RATE=97.39%
+```
+
+Recent post-bump `[flush]` fatal events:
+
+```text
+2026-04-23 19:54:57
+2026-04-26 00:39:01
+2026-04-26 01:39:40
+2026-04-26 02:35:38
+2026-04-27 11:10:36
+```
+
+### Current active-error signal
+
+From `doctor --quick`:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 1 '[flush] Fatal error in message reader' events (7d flush total: 16, most recent 2026-04-27 11:10:36) — active Bug H regression, investigate issue #16 [note: compile residual 6 in last 7d, latest 2026-04-25 23:24:18]
+```
+
+### Recommendation
+
+`keep open` — the prior 24-hour window did not clear cleanly. A new `[flush]` fatal appeared at
+`2026-04-27 11:10:36`, so issue #16 is not a closure candidate. Earliest meaningful re-check is
+after `2026-04-28 11:10:36` local log time if no newer `[flush]` fatal appears.
