@@ -54,6 +54,14 @@ _API_KEY_PATTERNS = [
 _RETRYABLE_AGENT_SDK_MARKERS = (
     "timeout",
     "fatal error in message reader",
+    "command failed with exit code 1",
+)
+_NON_RETRYABLE_AGENT_SDK_MARKERS = (
+    "authentication",
+    "not logged in",
+    "permission denied",
+    "mcp",
+    "config",
 )
 
 
@@ -76,6 +84,8 @@ def _agent_sdk_error_text(exc: BaseException) -> str:
 def _is_retryable_agent_sdk_error(exc: BaseException) -> bool:
     """Return True for transient Agent SDK failures that have recovered on retry."""
     text = _agent_sdk_error_text(exc).lower()
+    if any(marker in text for marker in _NON_RETRYABLE_AGENT_SDK_MARKERS):
+        return False
     return any(marker in text for marker in _RETRYABLE_AGENT_SDK_MARKERS)
 
 

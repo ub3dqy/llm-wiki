@@ -408,3 +408,66 @@ flush traffic shows the 24-hour window clearing. Next meaningful local re-check 
 GitHub issue update:
 
 - <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4326568455>
+
+## Mitigation follow-up — 2026-04-27 12:26 UTC
+
+### First mitigation result
+
+The `90f0ecd` retry change was insufficient. Live traffic produced three newer `[flush]` fatals:
+
+```text
+2026-04-27 14:28:12
+2026-04-27 14:45:41
+2026-04-27 15:06:26
+```
+
+Current post-bump evidence:
+
+```text
+POST_FLUSH_OK=1204
+POST_FLUSH_FAIL=35
+LAST_FLUSH_FATAL=2026-04-27 15:06:26
+LAST_FLUSH_OK=2026-04-27 14:20:44
+SUCCESS_RATE=97.18%
+```
+
+From `doctor --quick`:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 4 '[flush] Fatal error in message reader' events (7d flush total: 19, most recent 2026-04-27 15:06:26) — active Bug H regression, investigate issue #16 [note: compile residual 6 in last 7d, latest 2026-04-25 23:24:18]
+```
+
+### Root-cause update for the mitigation
+
+The exact `Fatal error in message reader` marker is visible in `scripts/flush.log`, but not in the
+exception text that reaches the retry classifier. The exception path only logged:
+
+```text
+Agent SDK query failed: Command failed with exit code 1 (exit code: 1)
+```
+
+Therefore the first mitigation never entered its retry branch. The follow-up change broadens the
+retry classifier to include opaque `Command failed with exit code 1`, while deny-listing obvious
+auth/config/permission failures so persistent setup errors are not silently hidden.
+
+### Verification
+
+```text
+uv run pytest tests/test_flush.py -q
+8 passed
+
+uv run pytest tests/ -q
+101 passed
+
+uv run ruff check scripts/flush.py tests/test_flush.py
+All checks passed!
+
+uv run python scripts/wiki_cli.py doctor --quick
+13/14 PASS; existing flush_pipeline_correctness FAIL remains from live pre-follow-up events
+```
+
+### Observation requirement
+
+Issue #16 remains `keep open`. The latest observed `[flush]` fatal is now
+`2026-04-27 15:06:26`; the next meaningful local re-check moves to after
+`2026-04-28 15:06:26` local log time unless a newer `[flush]` fatal appears.

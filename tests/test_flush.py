@@ -15,8 +15,19 @@ import pytest
             True,
             id="message-reader-fatal",
         ),
-        pytest.param("Command failed with exit code 1", False, id="generic-exit-1"),
+        pytest.param("Command failed with exit code 1", True, id="opaque-exit-1"),
+        pytest.param("Command failed with exit code 2", False, id="opaque-exit-2"),
         pytest.param("authentication failed", False, id="auth-failure"),
+        pytest.param(
+            "authentication failed: Command failed with exit code 1",
+            False,
+            id="auth-failure-exit-1",
+        ),
+        pytest.param(
+            "MCP config failed: Command failed with exit code 1",
+            False,
+            id="config-failure-exit-1",
+        ),
     ],
 )
 def test_is_retryable_agent_sdk_error_from_message(message: str, expected: bool) -> None:
