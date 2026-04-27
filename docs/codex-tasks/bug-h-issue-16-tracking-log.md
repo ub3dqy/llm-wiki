@@ -404,3 +404,7 @@ uv run python scripts/wiki_cli.py doctor --quick
 This is a mitigation, not closure evidence. Issue #16 stays `keep open` until post-change live
 flush traffic shows the 24-hour window clearing. Next meaningful local re-check remains after
 `2026-04-28 11:10:36` local log time unless a newer `[flush]` fatal appears.
+
+GitHub issue update:
+
+- <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4326568455>
