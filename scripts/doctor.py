@@ -117,6 +117,12 @@ def _parse_flush_log_events() -> dict[str, object]:
         "flush_fatal_errors": 0,
         "flush_fatal_errors_24h": 0,
         "latest_flush_fatal_ts": None,
+        "flush_pipeline_failures": 0,
+        "flush_pipeline_failures_24h": 0,
+        "latest_flush_pipeline_failure_ts": None,
+        "flush_salvaged_reader_errors": 0,
+        "flush_salvaged_reader_errors_24h": 0,
+        "latest_flush_salvaged_reader_ts": None,
         "compile_fatal_errors": 0,
         "compile_fatal_errors_24h": 0,
         "latest_compile_fatal_ts": None,
@@ -172,6 +178,30 @@ def _parse_flush_log_events() -> dict[str, object]:
                 latest_compile = stats["latest_compile_fatal_ts"]
                 if latest_compile is None or ts > latest_compile:
                     stats["latest_compile_fatal_ts"] = ts
+
+        if "[flush]" in tail and "Agent SDK exited non-zero after emitting result" in tail:
+            stats["flush_salvaged_reader_errors"] = int(
+                stats["flush_salvaged_reader_errors"]
+            ) + 1
+            if ts >= cutoff_24h:
+                stats["flush_salvaged_reader_errors_24h"] = int(
+                    stats["flush_salvaged_reader_errors_24h"]
+                ) + 1
+            latest_salvaged = stats["latest_flush_salvaged_reader_ts"]
+            if latest_salvaged is None or ts > latest_salvaged:
+                stats["latest_flush_salvaged_reader_ts"] = ts
+
+        if "[flush]" in tail and (
+            "Agent SDK query failed" in tail or "Agent SDK ProcessError" in tail
+        ):
+            stats["flush_pipeline_failures"] = int(stats["flush_pipeline_failures"]) + 1
+            if ts >= cutoff_24h:
+                stats["flush_pipeline_failures_24h"] = int(
+                    stats["flush_pipeline_failures_24h"]
+                ) + 1
+            latest_failure = stats["latest_flush_pipeline_failure_ts"]
+            if latest_failure is None or ts > latest_failure:
+                stats["latest_flush_pipeline_failure_ts"] = ts
 
     return stats
 
@@ -278,9 +308,13 @@ def check_flush_pipeline_correctness() -> CheckResult:
     except OSError as exc:
         return CheckResult("flush_pipeline_correctness", False, f"Could not read flush.log: {exc}")
 
-    flush_fatal_errors_7d = int(stats["flush_fatal_errors"])
-    flush_fatal_errors_24h = int(stats["flush_fatal_errors_24h"])
-    latest_flush_fatal_ts = stats["latest_flush_fatal_ts"]
+    flush_reader_fatal_errors_7d = int(stats["flush_fatal_errors"])
+    flush_reader_fatal_errors_24h = int(stats["flush_fatal_errors_24h"])
+    flush_pipeline_failures_7d = int(stats["flush_pipeline_failures"])
+    flush_pipeline_failures_24h = int(stats["flush_pipeline_failures_24h"])
+    latest_flush_pipeline_failure_ts = stats["latest_flush_pipeline_failure_ts"]
+    flush_salvaged_reader_errors_7d = int(stats["flush_salvaged_reader_errors"])
+    flush_salvaged_reader_errors_24h = int(stats["flush_salvaged_reader_errors_24h"])
     compile_fatal_errors_7d = int(stats["compile_fatal_errors"])
     compile_fatal_errors_24h = int(stats["compile_fatal_errors_24h"])
     latest_compile_fatal_ts = stats["latest_compile_fatal_ts"]
@@ -304,34 +338,44 @@ def check_flush_pipeline_correctness() -> CheckResult:
                 f"{CAPTURE_HEALTH_WINDOW_DAYS}d, latest {latest_compile_detail}]"
             )
 
-    if flush_fatal_errors_7d == 0:
+    salvage_note = ""
+    if flush_reader_fatal_errors_7d:
+        salvage_note = (
+            f" [reader fatal raw: {flush_reader_fatal_errors_24h} in last 24h / "
+            f"{flush_reader_fatal_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d; "
+            f"salvaged post-result: {flush_salvaged_reader_errors_24h} in last 24h / "
+            f"{flush_salvaged_reader_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d]"
+        )
+
+    if flush_pipeline_failures_7d == 0:
         return CheckResult(
             "flush_pipeline_correctness",
             True,
-            f"No '[flush] Fatal error in message reader' events in last "
-            f"{CAPTURE_HEALTH_WINDOW_DAYS} days{compile_note}",
+            f"No failed flush Agent SDK exits in last "
+            f"{CAPTURE_HEALTH_WINDOW_DAYS} days{salvage_note}{compile_note}",
         )
 
     latest_detail = (
-        latest_flush_fatal_ts.strftime("%Y-%m-%d %H:%M:%S")
-        if isinstance(latest_flush_fatal_ts, datetime)
+        latest_flush_pipeline_failure_ts.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(latest_flush_pipeline_failure_ts, datetime)
         else "unknown"
     )
-    if flush_fatal_errors_24h == 0:
+    if flush_pipeline_failures_24h == 0:
         return CheckResult(
             "flush_pipeline_correctness",
             True,
-            f"No '[flush] Fatal error in message reader' events in last 24h "
-            f"(historical flush: {flush_fatal_errors_7d} in last {CAPTURE_HEALTH_WINDOW_DAYS}d, "
-            f"most recent {latest_detail}, tracked in issue #16){compile_note}",
+            f"No failed flush Agent SDK exits in last 24h "
+            f"(historical failed flushes: {flush_pipeline_failures_7d} in last "
+            f"{CAPTURE_HEALTH_WINDOW_DAYS}d, most recent {latest_detail}, "
+            f"tracked in issue #16){salvage_note}{compile_note}",
         )
 
     return CheckResult(
         "flush_pipeline_correctness",
         False,
-        f"Last 24h: {flush_fatal_errors_24h} '[flush] Fatal error in message reader' events "
-        f"(7d flush total: {flush_fatal_errors_7d}, most recent {latest_detail}) "
-        f"— active Bug H regression, investigate issue #16{compile_note}",
+        f"Last 24h: {flush_pipeline_failures_24h} failed flush Agent SDK exits "
+        f"(7d failed flush total: {flush_pipeline_failures_7d}, most recent {latest_detail}) "
+        f"— active Bug H regression, investigate issue #16{salvage_note}{compile_note}",
     )
 
 

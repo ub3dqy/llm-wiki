@@ -89,6 +89,27 @@ def _is_retryable_agent_sdk_error(exc: BaseException) -> bool:
     return any(marker in text for marker in _RETRYABLE_AGENT_SDK_MARKERS)
 
 
+def _is_agent_result_message(message: object) -> bool:
+    """Detect SDK ResultMessage without tying flush.py to one SDK type import."""
+    return message.__class__.__name__ == "ResultMessage"
+
+
+def _extract_agent_message_text(message: object) -> str:
+    """Extract assistant text blocks from Agent SDK messages."""
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return content
+    if not content:
+        return ""
+
+    parts: list[str] = []
+    for block in content:
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            parts.append(text)
+    return "".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Concurrency control via lock files
 # ---------------------------------------------------------------------------
@@ -281,6 +302,7 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
     max_retries = 2
     for attempt in range(max_retries + 1):
         result_text = ""
+        saw_result_message = False
         try:
             async for message in query(
                 prompt=prompt,
@@ -298,12 +320,21 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                     extra_args={"strict-mcp-config": None},
                 ),
             ):
-                if hasattr(message, "content"):
-                    for block in message.content:
-                        if hasattr(block, "text"):
-                            result_text += block.text
+                if _is_agent_result_message(message):
+                    saw_result_message = True
+                result_text += _extract_agent_message_text(message)
             break  # success
         except Exception as e:
+            if (
+                saw_result_message
+                and result_text.strip()
+                and _is_retryable_agent_sdk_error(e)
+            ):
+                logging.warning(
+                    "Agent SDK exited non-zero after emitting result; using streamed result: %s",
+                    e,
+                )
+                break
             if attempt < max_retries and _is_retryable_agent_sdk_error(e):
                 logging.warning(
                     "Agent SDK transient failure (attempt %d/%d): %s",

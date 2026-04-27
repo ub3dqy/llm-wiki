@@ -475,3 +475,89 @@ Issue #16 remains `keep open`. The latest observed `[flush]` fatal is now
 GitHub issue update:
 
 - <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4326985287>
+
+## Mitigation follow-up — 2026-04-27 12:55 UTC
+
+### Second mitigation result
+
+The `d850343` opaque-exit retry change was still insufficient under live traffic. It entered the
+retry branch, but several flush runs failed all three attempts in a row. The latest unsalvaged
+failed flush exit before this follow-up was:
+
+```text
+2026-04-27 15:45:53
+```
+
+### Change
+
+`scripts/flush.py` now distinguishes two Agent SDK exit-1 cases:
+
+- **no result emitted**: keep retrying and eventually report a failed flush exit
+- **`ResultMessage` plus assistant text already emitted**: treat the non-zero process exit as a
+  post-result cleanup failure, keep the streamed result, and write it to the daily log
+
+`scripts/doctor.py` was updated to measure the same operational boundary. It now reports failed
+flush Agent SDK exits as pipeline failures while keeping raw reader fatal and salvaged post-result
+counts as context. This prevents a successfully salvaged `Fatal error in message reader` from
+resetting the data-loss observation window.
+
+### Live post-change evidence
+
+The first live flush after the change hit the same SDK reader fatal, but no data was lost:
+
+```text
+2026-04-27 15:50:01 ERROR [flush] Fatal error in message reader: Command failed with exit code 1 (exit code: 1)
+2026-04-27 15:50:01 WARNING [flush] Agent SDK exited non-zero after emitting result; using streamed result: Command failed with exit code 1 (exit code: 1)
+2026-04-27 15:50:01 INFO [flush] Flushed 99 chars to daily log for session 019dcbcc-4e30-7fa1-8584-19f13f0e88b3
+```
+
+From `doctor --quick` after the doctor classification update:
+
+```text
+[FAIL] flush_pipeline_correctness: Last 24h: 15 failed flush Agent SDK exits (7d failed flush total: 30, most recent 2026-04-27 15:45:53) — active Bug H regression, investigate issue #16 [reader fatal raw: 38 in last 24h / 53 in last 7d; salvaged post-result: 1 in last 24h / 1 in last 7d] [note: compile residual 6 in last 7d, latest 2026-04-25 23:24:18]
+```
+
+### Verification
+
+```text
+uv run pytest tests/test_flush.py tests/test_doctor.py -q
+12 passed
+
+uv run pytest tests/ -q
+105 passed
+
+uv run ruff check scripts/flush.py scripts/doctor.py tests/test_flush.py tests/test_doctor.py
+All checks passed!
+
+git diff --check
+<no output>
+
+uv run python scripts/wiki_cli.py doctor --quick
+14/15 PASS; expected flush_pipeline_correctness FAIL remains from unsalvaged pre-follow-up exits
+```
+
+### Observation requirement
+
+Issue #16 remains `keep open`. For data-loss pipeline correctness, the latest unsalvaged failed
+flush exit is now `2026-04-27 15:45:53`; the next meaningful local re-check moves to after
+`2026-04-28 15:45:53` local log time unless a newer failed flush exit appears.
+
+Raw SDK reader fatals may still appear. They should only reset the project pipeline observation
+window if they end in `Agent SDK query failed` / `Agent SDK ProcessError` rather than the new
+`Agent SDK exited non-zero after emitting result; using streamed result` salvage path.
+
+### Live follow-up — 2026-04-27 13:15 UTC
+
+Additional live traffic after the salvage change produced five more `[flush] Fatal error in message
+reader` events, all salvaged without data loss:
+
+```text
+2026-04-27 15:50:01 salvaged + Flushed 99 chars
+2026-04-27 15:54:05 salvaged + Flushed 99 chars
+2026-04-27 15:57:37 salvaged + Flushed 99 chars
+2026-04-27 16:13:29 salvaged + Flushed 99 chars
+2026-04-27 16:15:28 salvaged + Flushed 99 chars
+```
+
+No newer `Agent SDK query failed` or `Agent SDK ProcessError` line was observed after the latest
+unsalvaged failure at `2026-04-27 15:45:53`.
