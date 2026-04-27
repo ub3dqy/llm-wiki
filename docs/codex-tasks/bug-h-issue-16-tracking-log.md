@@ -471,3 +471,7 @@ uv run python scripts/wiki_cli.py doctor --quick
 Issue #16 remains `keep open`. The latest observed `[flush]` fatal is now
 `2026-04-27 15:06:26`; the next meaningful local re-check moves to after
 `2026-04-28 15:06:26` local log time unless a newer `[flush]` fatal appears.
+
+GitHub issue update:
+
+- <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4326985287>
