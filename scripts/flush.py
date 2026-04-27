@@ -51,6 +51,10 @@ _API_KEY_PATTERNS = [
     re.compile(r"ghp_[A-Za-z0-9]+"),
     re.compile(r"ghs_[A-Za-z0-9]+"),
 ]
+_RETRYABLE_AGENT_SDK_MARKERS = (
+    "timeout",
+    "fatal error in message reader",
+)
 
 
 def _scrub_secrets(text: str) -> str:
@@ -58,6 +62,21 @@ def _scrub_secrets(text: str) -> str:
     for pattern in _API_KEY_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     return text
+
+
+def _agent_sdk_error_text(exc: BaseException) -> str:
+    """Collect visible Agent SDK error text without assuming one exception shape."""
+    parts = [str(exc)]
+    stderr_text = getattr(exc, "stderr", None)
+    if stderr_text:
+        parts.append(str(stderr_text))
+    return "\n".join(parts)
+
+
+def _is_retryable_agent_sdk_error(exc: BaseException) -> bool:
+    """Return True for transient Agent SDK failures that have recovered on retry."""
+    text = _agent_sdk_error_text(exc).lower()
+    return any(marker in text for marker in _RETRYABLE_AGENT_SDK_MARKERS)
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +294,15 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                             result_text += block.text
             break  # success
         except Exception as e:
+            if attempt < max_retries and _is_retryable_agent_sdk_error(e):
+                logging.warning(
+                    "Agent SDK transient failure (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    e,
+                )
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
             if ProcessError is not None and isinstance(e, ProcessError):
                 exit_code = getattr(e, "exit_code", None)
                 stderr_text = getattr(e, "stderr", None) or "<empty>"
@@ -283,12 +311,6 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                     if subline.strip():
                         logging.error("[process-stderr] %s", subline)
                 return
-            if attempt < max_retries and "timeout" in str(e).lower():
-                logging.warning(
-                    "Agent SDK timeout (attempt %d/%d): %s", attempt + 1, max_retries + 1, e
-                )
-                await asyncio.sleep(2)
-                continue
             logging.error("Agent SDK query failed: %s", e)
             return
 

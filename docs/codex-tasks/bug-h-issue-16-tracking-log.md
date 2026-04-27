@@ -363,3 +363,44 @@ From `doctor --quick`:
 `keep open` — the prior 24-hour window did not clear cleanly. A new `[flush]` fatal appeared at
 `2026-04-27 11:10:36`, so issue #16 is not a closure candidate. Earliest meaningful re-check is
 after `2026-04-28 11:10:36` local log time if no newer `[flush]` fatal appears.
+
+## Mitigation attempt — 2026-04-27 11:24 UTC
+
+### Change
+
+`scripts/flush.py` now treats the known Agent SDK reader failure signature as retryable:
+
+```text
+Fatal error in message reader
+```
+
+The existing retry loop already retried timeout-like failures. This mitigation narrows the new
+retry surface to two textual markers only:
+
+- `timeout`
+- `fatal error in message reader`
+
+Generic `Command failed with exit code 1` remains non-retryable so auth/config failures are not
+silently hidden.
+
+### Verification
+
+```text
+uv run pytest tests/test_flush.py -q
+5 passed
+
+uv run pytest tests/ -q
+98 passed
+
+uv run ruff check scripts/flush.py tests/test_flush.py
+All checks passed!
+
+uv run python scripts/wiki_cli.py doctor --quick
+13/14 PASS; existing flush_pipeline_correctness FAIL remains from 2026-04-27 11:10:36
+```
+
+### Observation requirement
+
+This is a mitigation, not closure evidence. Issue #16 stays `keep open` until post-change live
+flush traffic shows the 24-hour window clearing. Next meaningful local re-check remains after
+`2026-04-28 11:10:36` local log time unless a newer `[flush]` fatal appears.
