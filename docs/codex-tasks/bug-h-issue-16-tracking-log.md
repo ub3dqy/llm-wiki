@@ -561,3 +561,7 @@ reader` events, all salvaged without data loss:
 
 No newer `Agent SDK query failed` or `Agent SDK ProcessError` line was observed after the latest
 unsalvaged failure at `2026-04-27 15:45:53`.
+
+GitHub issue update:
+
+- <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4327294308>
