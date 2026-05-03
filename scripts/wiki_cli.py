@@ -5,6 +5,7 @@ Usage:
     uv run python scripts/wiki_cli.py doctor            # run doctor quick checks
     uv run python scripts/wiki_cli.py doctor --full     # run full doctor gate
     uv run python scripts/wiki_cli.py compile [--all]    # compile daily logs
+    uv run python scripts/wiki_cli.py compile --file daily/2026-04-10.md --mark-manual --manual-note "updated concepts/x"
     uv run python scripts/wiki_cli.py query "question"   # query the wiki
     uv run python scripts/wiki_cli.py query "question" --preview
     uv run python scripts/wiki_cli.py lint               # run structural lint checks
@@ -25,7 +26,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import ROOT_DIR, WIKI_DIR
 from runtime_utils import find_uv
-from utils import build_article_metadata_map, list_daily_logs, list_wiki_articles, load_state
+from utils import (
+    build_article_metadata_map,
+    daily_log_has_compile_signal,
+    file_hash,
+    list_daily_logs,
+    list_wiki_articles,
+    load_state,
+)
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
@@ -43,11 +51,41 @@ def get_last_compile_marker(state: dict) -> str:
     return state.get("last_auto_compile_date", "never")
 
 
+def build_daily_log_status(logs: list[Path], state: dict) -> dict[str, object]:
+    """Summarize daily logs using the same signal rules as compile/lint."""
+    ingested = state.get("ingested", {})
+    compile_worthy = 0
+    low_signal = 0
+    pending: list[str] = []
+
+    for log_path in logs:
+        if not daily_log_has_compile_signal(log_path):
+            low_signal += 1
+            continue
+
+        compile_worthy += 1
+        prev = ingested.get(log_path.name, {})
+        current_hash = file_hash(log_path)
+        if not prev:
+            pending.append(f"{log_path.name} (new)")
+        elif prev.get("hash") != current_hash:
+            pending.append(f"{log_path.name} (changed)")
+
+    return {
+        "total": len(logs),
+        "compile_worthy": compile_worthy,
+        "low_signal": low_signal,
+        "pending": pending,
+    }
+
+
 def cmd_status() -> None:
     """Show wiki statistics."""
     articles = list_wiki_articles()
     meta = build_article_metadata_map()
     daily_logs = list_daily_logs()
+    state: dict = load_state()
+    daily_status = build_daily_log_status(daily_logs, state)
 
     # Count by type
     type_counts: dict[str, int] = {}
@@ -67,9 +105,6 @@ def cmd_status() -> None:
                 project_counts[p] = project_counts.get(p, 0) + 1
         else:
             untagged += 1
-
-    # Load state
-    state: dict = load_state()
 
     # Today's daily log entries
     today_entries = 0
@@ -92,11 +127,18 @@ def cmd_status() -> None:
             parts.append(f"untagged ({untagged})")
         print(f"  Projects: {', '.join(parts)}")
 
-    print(f"  Daily logs: {len(daily_logs)}", end="")
+    daily_parts = [
+        f"compile-worthy: {daily_status['compile_worthy']}",
+        f"pending: {len(daily_status['pending'])}",
+        f"low-signal: {daily_status['low_signal']}",
+    ]
     if today_entries:
-        print(f" (today: {today_entries} entries)")
-    else:
-        print()
+        daily_parts.insert(0, f"today: {today_entries} entries")
+    print(f"  Daily logs: {len(daily_logs)} ({', '.join(daily_parts)})")
+
+    pending_logs = daily_status["pending"]
+    if pending_logs:
+        print(f"  Pending compile: {', '.join(pending_logs)}")
 
     last_compile = get_last_compile_marker(state)
     last_lint = state.get("last_lint", "never")

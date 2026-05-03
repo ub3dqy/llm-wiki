@@ -11,7 +11,7 @@ from pathlib import Path
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import INDEX_FILE, LOG_FILE, QA_DIR, WIKI_DIR, now_iso
+from config import INDEX_FILE, LOG_FILE, QA_DIR, WIKI_AGENT_BACKEND, WIKI_DIR, now_iso
 from utils import (
     list_wiki_articles,
     load_state,
@@ -171,6 +171,13 @@ def preview_query(question: str) -> str:
 
 async def run_query(question: str, file_back: bool = False) -> str:
     """Query the knowledge base. Optionally file the answer as a Q&A article."""
+    if WIKI_AGENT_BACKEND != "claude":
+        return (
+            f"Agent SDK query requires WIKI_AGENT_BACKEND=claude; current backend is "
+            f"{WIKI_AGENT_BACKEND!r}. Use --preview, read the candidate articles, and answer "
+            "manually."
+        )
+
     from claude_agent_sdk import ClaudeAgentOptions, query
 
     wiki_index = read_wiki_index()

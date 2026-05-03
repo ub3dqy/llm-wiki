@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from utils import (
     content_has_wikilink_target,
+    daily_log_has_compile_signal,
     extract_wikilinks,
     frontmatter_sources_include_prefix,
     get_article_projects,
@@ -218,3 +219,44 @@ def test_wiki_article_exists_traversal_rejected(fake_wiki: Path) -> None:
 
 def test_wiki_article_exists_parent_index(fake_wiki: Path) -> None:
     assert wiki_article_exists("index") is True
+
+
+def test_daily_log_has_compile_signal_false_for_tool_capture_only(tmp_path: Path) -> None:
+    log = tmp_path / "2026-05-03.md"
+    log.write_text(
+        "# Daily Log\n\n"
+        "## [2026-05-03T13:12:58+00:00] tool-capture\n\n"
+        "- **Build**: `npm run build:prerender`\n"
+        "- Project: stepan-live\n",
+        encoding="utf-8",
+    )
+
+    assert daily_log_has_compile_signal(log) is False
+
+
+def test_daily_log_has_compile_signal_false_for_auth_noise(tmp_path: Path) -> None:
+    log = tmp_path / "2026-04-28.md"
+    log.write_text(
+        "# Daily Log\n\n"
+        "## [2026-04-28T22:23:35+00:00]\n\n"
+        "Your organization does not have access to Claude. Please login again or contact your administrator.\n"
+        "\n"
+        "## [2026-04-28T22:33:21+00:00] tool-capture\n\n"
+        "- **Build**: `npm run build`\n"
+        "- Project: site-tiretop\n",
+        encoding="utf-8",
+    )
+
+    assert daily_log_has_compile_signal(log) is False
+
+
+def test_daily_log_has_compile_signal_true_for_narrative_entry(tmp_path: Path) -> None:
+    log = tmp_path / "2026-04-27.md"
+    log.write_text(
+        "# Daily Log\n\n"
+        "## [2026-04-27T06:53:02+00:00]\n\n"
+        "- **Q: What changed?** A: Channels replaced monitor-only mailbox delivery.\n",
+        encoding="utf-8",
+    )
+
+    assert daily_log_has_compile_signal(log) is True

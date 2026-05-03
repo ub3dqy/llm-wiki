@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
+from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import REPORTS_DIR, SOURCES_DIR, WIKI_DIR, now_iso, today_iso
 from runtime_utils import find_uv, is_wsl
 from utils import (
+    daily_log_has_compile_signal,
     extract_wikilinks,
     file_hash,
     get_article_word_count,
@@ -39,6 +41,7 @@ from utils import (
 )
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+SOURCE_DRIFT_REVIEW_LEDGER = ROOT_DIR / "docs" / "codex-tasks" / "source-drift-review-ledger.md"
 ADVISORY_BANNER = "[ADVISORY] Contradiction check results are non-deterministic and must not be used as a merge gate."
 _WIKI_ROOT = WIKI_DIR.resolve()
 
@@ -52,6 +55,7 @@ _UNSTABLE_URL_PATTERNS = [
     re.compile(r"github\.com/[^/]+/[^/]+/(blob|wiki|tree)/"),
     re.compile(r"github\.com/[^/]+/[^/]+/?$"),
 ]
+_LAST_SOURCE_DRIFT_SNAPSHOT: list[dict[str, str]] = []
 
 
 def _wiki_articles() -> list[Path]:
@@ -181,6 +185,8 @@ def check_orphan_sources() -> list[dict]:
     ingested = state.get("ingested", {})
     issues: list[dict] = []
     for log_path in list_daily_logs():
+        if not daily_log_has_compile_signal(log_path):
+            continue
         if log_path.name not in ingested:
             issues.append(
                 {
@@ -199,6 +205,8 @@ def check_stale_articles() -> list[dict]:
     ingested = state.get("ingested", {})
     issues: list[dict] = []
     for log_path in list_daily_logs():
+        if not daily_log_has_compile_signal(log_path):
+            continue
         rel = log_path.name
         if rel in ingested:
             stored_hash = ingested[rel].get("hash", "")
@@ -341,6 +349,51 @@ def _parse_http_datetime(value: str) -> object | None:
 def _domain_key(url: str) -> str:
     parts = urlsplit(url)
     return (parts.netloc or parts.path).lower()
+
+
+def _normalize_domain_filter(value: str | None) -> str:
+    if not value:
+        return ""
+    raw = value.strip().lower()
+    if not raw:
+        return ""
+    parsed = urlsplit(raw if "://" in raw else f"//{raw}")
+    host = parsed.hostname or raw.split("/", 1)[0].split(":", 1)[0]
+    return host.rstrip(".")
+
+
+def _matches_domain_filter(url: str, domain_filter: str) -> bool:
+    if not domain_filter:
+        return True
+    host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    return host == domain_filter
+
+
+def _source_article_filter_label(value: str | None) -> str:
+    if not value:
+        return ""
+    raw = value.strip().replace("\\", "/")
+    if raw.startswith("wiki/"):
+        raw = raw.removeprefix("wiki/")
+    if raw.startswith("sources/"):
+        raw = raw.removeprefix("sources/")
+    if raw.endswith(".md"):
+        raw = raw.removesuffix(".md")
+    return raw.strip("/")
+
+
+def _resolve_source_article_filter(value: str | None) -> Path | None:
+    label = _source_article_filter_label(value)
+    if not label:
+        return None
+
+    candidate = (SOURCES_DIR / f"{label}.md").resolve()
+    sources_root = SOURCES_DIR.resolve()
+    if not candidate.is_relative_to(sources_root):
+        raise ValueError(f"source article is outside wiki/sources: {value!r}")
+    if not candidate.exists():
+        raise ValueError(f"source article not found: sources/{label}.md")
+    return candidate
 
 
 def _is_unstable_url(url: str) -> bool:
@@ -498,28 +551,47 @@ def _check_source_url(
         return "network_error", str(exc), entry
 
 
-def check_source_drift(timeout: float = 10.0, delay: float = 2.0) -> list[dict]:
+def check_source_drift(
+    timeout: float = 10.0,
+    delay: float = 2.0,
+    *,
+    domain: str | None = None,
+    source_article: str | None = None,
+    save: bool = True,
+    progress: Callable[[dict[str, str], int], None] | None = None,
+) -> list[dict]:
     """Advisory: check wiki/sources/ HTTP URLs for upstream changes.
 
     Uses HEAD requests with RFC 9110 conditional validators. First run captures
     baseline validators; subsequent runs report only drift and rot.
     """
+    global _LAST_SOURCE_DRIFT_SNAPSHOT
+
     state = load_state()
     cache = state.get("source_drift_validators", {})
     if not isinstance(cache, dict):
         cache = {}
 
     issues: list[dict] = []
+    snapshot_rows: list[dict[str, str]] = []
     per_domain_last_request: dict[str, float] = defaultdict(float)
     checked_urls: dict[str, tuple[str, str, dict[str, str]]] = {}
+    domain_filter = _normalize_domain_filter(domain)
+    source_article_filter = _resolve_source_article_filter(source_article)
 
     for article in sorted(SOURCES_DIR.glob("*.md")):
+        if source_article_filter and article.resolve() != source_article_filter:
+            continue
+
         rel = article.relative_to(WIKI_DIR)
         article_urls = _extract_source_urls(article)
         if not article_urls:
             continue
 
         for url in article_urls:
+            if not _matches_domain_filter(url, domain_filter):
+                continue
+
             if url in checked_urls:
                 classification, detail, entry = checked_urls[url]
             else:
@@ -537,6 +609,17 @@ def check_source_drift(timeout: float = 10.0, delay: float = 2.0) -> list[dict]:
                 per_domain_last_request[domain] = time.monotonic()
                 cache[url] = entry
                 checked_urls[url] = (classification, detail, entry)
+
+            row = {
+                "file": str(rel).replace("\\", "/"),
+                "url": url,
+                "domain": _domain_key(url),
+                "status": classification,
+                "detail": detail,
+            }
+            snapshot_rows.append(row)
+            if progress:
+                progress(row, len(snapshot_rows))
 
             if classification == "drift":
                 issues.append(
@@ -566,9 +649,160 @@ def check_source_drift(timeout: float = 10.0, delay: float = 2.0) -> list[dict]:
                     }
                 )
 
-    state["source_drift_validators"] = cache
-    save_state(state)
+    _LAST_SOURCE_DRIFT_SNAPSHOT = snapshot_rows
+    if save:
+        state["source_drift_validators"] = cache
+        save_state(state)
     return issues
+
+
+def _markdown_cell(value: object) -> str:
+    return str(value).replace("\n", " ").replace("|", r"\|")
+
+
+def _source_drift_status_counts(rows: list[dict[str, str]]) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for row in rows:
+        counts[row.get("status", "unknown")] += 1
+    return counts
+
+
+def write_source_drift_snapshot(
+    rows: list[dict[str, str]],
+    *,
+    domain: str | None = None,
+    source_article: str | None = None,
+    export_only: bool = False,
+) -> Path:
+    """Write a durable source-drift snapshot report for review batching."""
+    domain_filter = _normalize_domain_filter(domain)
+    source_article_filter = _source_article_filter_label(source_article)
+    label = "-".join(part for part in (domain_filter, source_article_filter) if part) or "all"
+    safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-") or "all"
+    timestamp = now_iso().replace(":", "-")
+    report_path = REPORTS_DIR / f"source-drift-{timestamp}-{safe_label}.md"
+
+    counts = _source_drift_status_counts(rows)
+
+    lines = [
+        f"# Source Drift Snapshot — {now_iso()}",
+        "",
+        f"- Mode: {'export-only (validator state not saved)' if export_only else 'state-updating'}",
+        f"- Domain filter: {domain_filter or 'all'}",
+        f"- Source article filter: {source_article_filter or 'all'}",
+        f"- Checked URL references: {len(rows)}",
+        "",
+        "## Status Counts",
+        "",
+    ]
+
+    if counts:
+        for status, count in sorted(counts.items()):
+            lines.append(f"- {status}: {count}")
+    else:
+        lines.append("- none: 0")
+
+    lines.extend(
+        [
+            "",
+            "## URLs",
+            "",
+            "| Status | Source | URL | Detail |",
+            "|---|---|---|---|",
+        ]
+    )
+
+    for row in rows:
+        lines.append(
+            "| "
+            f"{_markdown_cell(row.get('status', ''))} | "
+            f"{_markdown_cell(row.get('file', ''))} | "
+            f"{_markdown_cell(row.get('url', ''))} | "
+            f"{_markdown_cell(row.get('detail', ''))} |"
+        )
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return report_path
+
+
+def write_source_drift_ledger_entry(
+    rows: list[dict[str, str]],
+    *,
+    issues: list[dict] | None = None,
+    domain: str | None = None,
+    source_article: str | None = None,
+    export_only: bool = False,
+    ledger_path: Path | None = None,
+) -> Path:
+    """Append a durable source-drift review ledger entry with pending decisions."""
+    ledger_path = ledger_path or SOURCE_DRIFT_REVIEW_LEDGER
+    timestamp = now_iso()
+    domain_filter = _normalize_domain_filter(domain)
+    source_article_filter = _source_article_filter_label(source_article)
+    counts = _source_drift_status_counts(rows)
+    lint_issue_count = len(issues or [])
+    actionable_rows = [row for row in rows if row.get("status") in {"drift", "rot", "refused"}]
+
+    if ledger_path.exists():
+        text = ledger_path.read_text(encoding="utf-8")
+        lines = [text.rstrip(), ""]
+    else:
+        lines = [
+            "# Source Drift Review Ledger",
+            "",
+            "Durable ledger for explicit source-drift maintenance runs.",
+            "Entries created by tooling are pending manual review until a human records a decision.",
+            "Do not use this ledger as automatic evidence for `reviewed:` frontmatter.",
+            "",
+        ]
+
+    lines.extend(
+        [
+            f"## {timestamp} — scan pending review",
+            "",
+            f"- Mode: {'export-only (validator state not saved)' if export_only else 'state-updating'}",
+            f"- Domain filter: {domain_filter or 'all'}",
+            f"- Source article filter: {source_article_filter or 'all'}",
+            f"- Checked URL references: {len(rows)}",
+            f"- Lint issue rows: {lint_issue_count}",
+            f"- Actionable review rows: {len(actionable_rows)}",
+            "- Review state: pending manual review",
+            "",
+            "### Status Counts",
+            "",
+        ]
+    )
+
+    if counts:
+        for status, count in sorted(counts.items()):
+            lines.append(f"- {status}: {count}")
+    else:
+        lines.append("- none: 0")
+
+    lines.extend(["", "### Review Queue", ""])
+    if actionable_rows:
+        lines.extend(
+            [
+                "| Status | Source | URL | Detail | Review decision |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in actionable_rows:
+            lines.append(
+                "| "
+                f"{_markdown_cell(row.get('status', ''))} | "
+                f"{_markdown_cell(row.get('file', ''))} | "
+                f"{_markdown_cell(row.get('url', ''))} | "
+                f"{_markdown_cell(row.get('detail', ''))} | "
+                "pending |"
+            )
+    else:
+        lines.append("No drift, rot, or refused rows in this scan.")
+
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return ledger_path
 
 
 def check_missing_backlinks() -> list[dict]:
@@ -953,6 +1187,26 @@ def main() -> int:
         help="Check wiki/sources/ URLs for upstream drift or rot (network I/O)",
     )
     parser.add_argument(
+        "--domain",
+        metavar="HOST",
+        help="Limit --source-drift to source URLs on one exact host",
+    )
+    parser.add_argument(
+        "--source-article",
+        metavar="SLUG_OR_PATH",
+        help="Limit --source-drift to one wiki/sources article",
+    )
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="With --source-drift, write a snapshot without updating validator state",
+    )
+    parser.add_argument(
+        "--ledger",
+        action="store_true",
+        help="With --source-drift, append a durable review ledger entry",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print contradiction issues as JSON (for internal delegation)",
@@ -963,6 +1217,22 @@ def main() -> int:
         help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
+
+    if args.domain and not args.source_drift:
+        parser.error("--domain requires --source-drift")
+    if args.source_article and not args.source_drift:
+        parser.error("--source-article requires --source-drift")
+    if args.export_only and not args.source_drift:
+        parser.error("--export-only requires --source-drift")
+    if args.ledger and not args.source_drift:
+        parser.error("--ledger requires --source-drift")
+
+    source_article_filter: Path | None = None
+    if args.source_article:
+        try:
+            source_article_filter = _resolve_source_article_filter(args.source_article)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     if args.contradictions_only:
         if args.internal_contradictions_runtime:
@@ -1004,9 +1274,48 @@ def main() -> int:
         print(
             "  [ADVISORY] Source drift results are network-dependent and must not be used as a merge gate."
         )
-        issues = check_source_drift()
+        if args.domain:
+            print(f"  Domain filter: {_normalize_domain_filter(args.domain)}")
+        if source_article_filter:
+            rel_source_article = source_article_filter.relative_to(WIKI_DIR)
+            rel_source_article_text = str(rel_source_article).replace("\\", "/")
+            print(f"  Source article filter: {rel_source_article_text}")
+        if args.export_only:
+            print("  Export-only mode: validator state will not be saved.")
+
+        def print_source_drift_progress(row: dict[str, str], checked_count: int) -> None:
+            print(
+                "    "
+                f"checked {checked_count}: "
+                f"{row.get('status', 'unknown')} "
+                f"{row.get('domain', 'unknown')} "
+                f"({row.get('file', 'unknown')})"
+            )
+
+        issues = check_source_drift(
+            domain=args.domain,
+            source_article=args.source_article,
+            save=not args.export_only,
+            progress=print_source_drift_progress,
+        )
         all_issues.extend(issues)
         print(f"    Found {len(issues)} issue(s)")
+        snapshot_path = write_source_drift_snapshot(
+            _LAST_SOURCE_DRIFT_SNAPSHOT,
+            domain=args.domain,
+            source_article=args.source_article,
+            export_only=args.export_only,
+        )
+        print(f"    Snapshot saved to: {snapshot_path}")
+        if args.ledger:
+            ledger_path = write_source_drift_ledger_entry(
+                _LAST_SOURCE_DRIFT_SNAPSHOT,
+                issues=issues,
+                domain=args.domain,
+                source_article=args.source_article,
+                export_only=args.export_only,
+            )
+            print(f"    Review ledger updated: {ledger_path}")
         print("  Skipping: Contradictions (--source-drift explicit network check)")
     elif not args.structural_only:
         print("  Checking: Contradictions (LLM)...")

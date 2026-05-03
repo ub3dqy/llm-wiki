@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 from config import (  # noqa: E402
+    WIKI_AGENT_BACKEND,
     WIKI_MAX_CONTEXT_CHARS as MAX_CONTEXT_CHARS,
     WIKI_MAX_TURNS as MAX_TURNS,
     WIKI_MIN_FLUSH_CHARS,
@@ -59,6 +60,10 @@ def main() -> None:
     cwd = hook_input.get("cwd", "")
 
     logging.info("PreCompact fired: session=%s", session_id)
+
+    if WIKI_AGENT_BACKEND != "claude":
+        logging.info("SKIP: WIKI_AGENT_BACKEND=%s; Agent SDK flush disabled", WIKI_AGENT_BACKEND)
+        return
 
     if not transcript_path_str or not isinstance(transcript_path_str, str):
         logging.info("SKIP: no transcript path")

@@ -240,6 +240,7 @@ preferences. Supported keys:
 | `WIKI_MAX_CONTEXT_CHARS` | `15000` | Max characters captured from a transcript. |
 | `WIKI_MIN_FLUSH_CHARS` | `500` | Min characters of meaningful context before `flush.py` runs. Sessions below this threshold are skipped. |
 | `WIKI_DEBOUNCE_SEC` | `10` | Debounce window for cascading hooks. |
+| `WIKI_AGENT_BACKEND` | `claude` | `claude` enables Agent SDK automation; `manual` disables Claude SDK calls so Codex/humans maintain the wiki directly. |
 
 Unset keys fall back to defaults. Invalid values print a `[config] warning`
 at import time and also fall back to the default.
@@ -315,6 +316,11 @@ uv run python scripts/rebuild_index.py --check
 ```
 
 `doctor.py --quick` is for fast daily checks. `doctor.py --full` runs the full gate, including WSL/Codex runtime checks and hook smokes. The same modes are available through `wiki_cli.py doctor`, and `wiki_cli.py doctor` without flags defaults to quick mode.
+`doctor.py --full` also probes live Agent SDK account access used by `flush.py` and
+`compile.py` when `WIKI_AGENT_BACKEND=claude`; if the Claude account reports no
+organization access, compilation is an external integration blocker rather than
+wiki state drift. With `WIKI_AGENT_BACKEND=manual`, SDK probes and the flush
+roundtrip are skipped intentionally.
 
 ### Gate roles
 
@@ -334,7 +340,10 @@ Keep these three roles separate:
    `uv run python scripts/doctor.py --full`  
    Extends the CI gate with runtime checks (WSL/Codex env), hook smokes, and an
    **end-to-end roundtrip test** that simulates SessionEnd with a dummy
-   transcript and verifies the full `session-end -> flush.py` chain.
+   transcript and verifies the full `session-end -> flush.py` chain. It also
+   checks live Agent SDK account access before trusting Agent SDK-dependent
+   flush/compile behavior. In `manual` backend mode, the SDK probes and
+   roundtrip are reported as skipped because the Agent SDK path is disabled.
    Should be run before any merge that touches the hook pipeline.
 
 3. **Advisory knowledge review (non-blocker)**  
@@ -355,13 +364,37 @@ Just use Claude Code normally. The hooks will:
 1. Inject wiki context at session start
 2. Inject relevant articles when you ask questions
 3. Capture knowledge when sessions end
-4. Auto-compile daily logs into wiki articles after 18:00
+4. Auto-compile compile-worthy daily logs into wiki articles after 18:00
 5. Mark compile-generated knowledge with explicit provenance and confidence
+
+Daily logs that contain only `tool-capture` micro-events, such as repeated
+build/test commands, remain as operational trace but are skipped by normal
+compile and structural lint. Use `compile.py --file ...` or `compile.py --all`
+when you explicitly want to force them through the Agent SDK.
+If Agent SDK account access is unavailable, `compile.py` fails without updating
+ingest state; fix the Claude account/session first, then rerun compile.
+
+### Manual/Codex-only mode
+
+Set `WIKI_AGENT_BACKEND=manual` in `.env` when Claude Code or Claude Agent SDK is
+unavailable. In this mode:
+
+- SDK-dependent hooks skip instead of spawning `flush.py` background processes.
+- `compile.py`, `query.py`, and `seed.py` do not start Agent SDK sessions.
+- `query.py --preview`, local retrieval hooks, lint, doctor, and direct wiki
+  edits remain available.
+- After manually compiling a daily log into wiki/index/log updates, record the
+  state hash with:
+
+```bash
+uv run python scripts/compile.py --file daily/2026-04-10.md --mark-manual --manual-note "updated concepts/x and log.md"
+```
 
 ### Manual commands
 
 ```bash
 # Show wiki status
+# Includes compile-worthy/pending/low-signal daily log counts.
 uv run python scripts/wiki_cli.py status
 
 # Run doctor checks
@@ -370,7 +403,11 @@ uv run python scripts/wiki_cli.py doctor --quick
 uv run python scripts/wiki_cli.py doctor --full
 
 # Compile daily logs into wiki articles
+# Normal mode skips low-signal tool-capture-only daily logs.
 uv run python scripts/wiki_cli.py compile
+
+# Mark a daily log after manual/Codex compilation
+uv run python scripts/compile.py --file daily/2026-04-10.md --mark-manual --manual-note "updated concepts/x and log.md"
 
 # Query the knowledge base
 uv run python scripts/wiki_cli.py query "how does auth work?"
@@ -499,6 +536,10 @@ wiki runtime, not from whichever shell interpreter happened to launch the hook.
 
 Agent SDK uses your existing Claude subscription (Max/Team/Enterprise) — no separate API costs.
 
+When Claude Agent SDK is not available, set `WIKI_AGENT_BACKEND=manual`. That
+turns off SDK automation without disabling the markdown wiki, retrieval preview,
+lint, doctor, or manual state marking workflow.
+
 ### Concurrency control
 
 Without limits, closing multiple sessions simultaneously spawns hundreds of node.exe processes (each flush.py → Agent SDK → bundled claude.exe). File locks limit concurrent flush to 2, debounce prevents rapid-fire spawns.
@@ -555,7 +596,8 @@ echo '{}' | uv run python hooks/session-start.py | python -c "import sys,json; p
 6-turn transcript, invokes `session-end.py` as a subprocess with
 `WIKI_FLUSH_TEST_MODE=1`, and verifies the full chain completes. This is the
 fastest way to confirm that a Claude Code update has not broken the capture
-pipeline.
+pipeline. In `WIKI_AGENT_BACKEND=manual`, this check is skipped because SDK
+flush automation is intentionally disabled.
 
 `wiki_cli.py lint` without flags now defaults to the cheap structural route. Use
 `wiki_cli.py lint --full` only when you explicitly want the contradiction review.
@@ -563,6 +605,19 @@ That route is advisory, not blocking. The full route uses the project dependency
 environment so Agent SDK checks can run even if your current shell Python is
 lightweight. In WSL, the contradiction step may delegate to the Windows `uv`
 runtime to keep the result consistent with the main project environment.
+
+Source-drift scans are also advisory and network-dependent. For review batches,
+prefer a scoped snapshot instead of the full URL set:
+
+```bash
+uv run python scripts/lint.py --source-drift --domain docs.python.org --export-only
+uv run python scripts/lint.py --source-drift --source-article sources/python-docs.md --export-only
+uv run python scripts/lint.py --source-drift --source-article sources/python-docs.md --export-only --ledger
+```
+
+`--export-only` writes a dated `reports/source-drift-*.md` snapshot without
+updating the local validator cache. Add `--ledger` when you also want a tracked
+pending-review entry in `docs/codex-tasks/source-drift-review-ledger.md`.
 
 </details>
 

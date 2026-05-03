@@ -25,6 +25,7 @@ from config import (
     INDEX_FILE,
     LOG_FILE,
     SCHEMA_FILE,
+    WIKI_AGENT_BACKEND,
     now_iso,
 )
 from utils import read_wiki_index
@@ -105,8 +106,15 @@ def scan_project(project_dir: str) -> dict:
     }
 
 
-async def seed_wiki(project_info: dict, project_name: str) -> None:
+async def seed_wiki(project_info: dict, project_name: str) -> bool:
     """Use Agent SDK to create wiki articles from project scan."""
+    if WIKI_AGENT_BACKEND != "claude":
+        print(
+            f"Error: seed requires WIKI_AGENT_BACKEND=claude; current backend is "
+            f"{WIKI_AGENT_BACKEND!r}. Use --dry-run and create/update wiki pages manually."
+        )
+        return False
+
     from claude_agent_sdk import ClaudeAgentOptions, query
 
     schema = SCHEMA_FILE.read_text(encoding="utf-8") if SCHEMA_FILE.exists() else "(no schema)"
@@ -204,7 +212,7 @@ Create wiki articles for this project following the schema:
                 cost = message.total_cost_usd or 0.0
     except Exception as e:
         print(f"Error: {e}")
-        return
+        return False
 
     print(f"Seed complete. Cost: ${cost:.4f}")
 
@@ -216,6 +224,7 @@ Create wiki articles for this project following the schema:
         print("Index enriched with project tags and word counts.")
     except Exception:
         pass
+    return True
 
 
 def main() -> None:
@@ -241,7 +250,8 @@ def main() -> None:
         return
 
     print("\nSeeding wiki...")
-    asyncio.run(seed_wiki(project_info, project_name))
+    if not asyncio.run(seed_wiki(project_info, project_name)):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

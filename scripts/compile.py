@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -22,9 +23,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# Propagate guard to Agent SDK sub-sessions so hooks don't fire for them.
-os.environ["CLAUDE_INVOKED_BY"] = "compile"
-
 # Add scripts/ to path for sibling imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -34,9 +32,11 @@ from config import (  # noqa: E402
     INDEX_FILE,
     LOG_FILE,
     SCHEMA_FILE,
+    WIKI_AGENT_BACKEND,
     now_iso,
 )
 from utils import (  # noqa: E402
+    daily_log_has_compile_signal,
     file_hash,
     list_daily_logs,
     list_wiki_articles,
@@ -46,6 +46,51 @@ from utils import (  # noqa: E402
 )
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+
+_API_KEY_PATTERNS = [
+    re.compile(r"sk-ant-[A-Za-z0-9_-]+"),
+    re.compile(r"ghp_[A-Za-z0-9]+"),
+    re.compile(r"ghs_[A-Za-z0-9]+"),
+]
+
+
+def _scrub_secrets(text: str) -> str:
+    """Redact API-key-shaped tokens before writing diagnostic logs."""
+    for pattern in _API_KEY_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
+
+
+def _log_cli_stderr(line: str) -> None:
+    """Forward bundled Claude CLI stderr into flush.log with secret scrubbing."""
+    try:
+        for subline in line.splitlines():
+            if subline.strip():
+                logging.info("[agent-stderr] %s", _scrub_secrets(subline))
+    except Exception:
+        pass
+
+
+def _is_agent_result_message(message: object) -> bool:
+    """Detect SDK ResultMessage without tying compile.py to one SDK type import."""
+    return message.__class__.__name__ == "ResultMessage"
+
+
+def _format_agent_result_error(message: object) -> str:
+    result = getattr(message, "result", None)
+    if isinstance(result, str) and result.strip():
+        return result.strip()
+    errors = getattr(message, "errors", None)
+    if errors:
+        return str(errors)
+    return "Agent SDK returned an error result"
+
+
+def _restore_invocation_guard(previous_value: str | None) -> None:
+    if previous_value is None:
+        os.environ.pop("CLAUDE_INVOKED_BY", None)
+    else:
+        os.environ["CLAUDE_INVOKED_BY"] = previous_value
 
 
 def count_log_entries(log_path: Path) -> int:
@@ -86,8 +131,31 @@ def print_compile_plan(plan: list[dict[str, str | int]]) -> None:
         )
 
 
+def mark_daily_log_manually_compiled(log_path: Path, state: dict, note: str) -> None:
+    """Record that a daily log was compiled by a manual/Codex workflow."""
+    cleaned_note = note.strip()
+    if not cleaned_note:
+        raise ValueError("manual note is required")
+
+    state.setdefault("ingested", {})[log_path.name] = {
+        "hash": file_hash(log_path),
+        "compiled_at": now_iso(),
+        "cost_usd": 0.0,
+        "compiled_by": "manual",
+        "manual_note": cleaned_note,
+    }
+    save_state(state)
+
+
 async def compile_daily_log(log_path: Path, state: dict) -> float:
     """Compile a single daily log into wiki articles. Returns API cost."""
+    if WIKI_AGENT_BACKEND != "claude":
+        raise RuntimeError(
+            f"Automated compile requires WIKI_AGENT_BACKEND=claude; current backend is "
+            f"{WIKI_AGENT_BACKEND!r}. Use --dry-run, then update wiki/index/log/state via the "
+            "manual compile workflow."
+        )
+
     from claude_agent_sdk import ClaudeAgentOptions, query
 
     log_content = log_path.read_text(encoding="utf-8")
@@ -185,6 +253,8 @@ to create a new article or update an existing one. Use Grep to find related arti
 """
 
     cost = 0.0
+    previous_invoked_by = os.environ.get("CLAUDE_INVOKED_BY")
+    os.environ["CLAUDE_INVOKED_BY"] = "compile"
 
     try:
         async for message in query(
@@ -195,8 +265,16 @@ to create a new article or update an existing one. Use Grep to find related arti
                 allowed_tools=["Read", "Write", "Edit", "Glob", "Grep"],
                 permission_mode="acceptEdits",
                 max_turns=30,
+                stderr=_log_cli_stderr,
+                # Keep compile.py non-interactive. Without this, the bundled
+                # Claude CLI may discover account-level MCP servers and fail on
+                # their auth/config flow after the SDK has already streamed
+                # partial output.
+                extra_args={"strict-mcp-config": None},
             ),
         ):
+            if _is_agent_result_message(message) and getattr(message, "is_error", False):
+                raise RuntimeError(_format_agent_result_error(message))
             if hasattr(message, "total_cost_usd"):
                 cost = message.total_cost_usd or 0.0
                 print(f"  Cost: ${cost:.4f}")
@@ -205,6 +283,8 @@ to create a new article or update an existing one. Use Grep to find related arti
         print(f"  Error: {e}", file=sys.stderr)
         logging.error("Agent SDK failure compiling %s: %s", log_path.name, e)
         raise
+    finally:
+        _restore_invocation_guard(previous_invoked_by)
 
     # Track what we compiled
     rel_path = log_path.name
@@ -224,7 +304,26 @@ def main() -> None:
     parser.add_argument("--all", action="store_true", help="Force recompile all logs")
     parser.add_argument("--file", type=str, help="Compile a specific daily log file")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be compiled")
+    parser.add_argument(
+        "--mark-manual",
+        action="store_true",
+        help="Mark --file as manually compiled after wiki/index/log updates are complete",
+    )
+    parser.add_argument(
+        "--manual-note",
+        type=str,
+        default="",
+        help="Required note describing the manual wiki/index/log updates",
+    )
     args = parser.parse_args()
+
+    if args.mark_manual:
+        if not args.file:
+            parser.error("--mark-manual requires --file")
+        if args.all:
+            parser.error("--mark-manual cannot be combined with --all")
+        if not args.manual_note.strip():
+            parser.error("--mark-manual requires --manual-note")
 
     state = load_state()
 
@@ -242,15 +341,24 @@ def main() -> None:
         to_compile = [target]
     else:
         all_logs = list_daily_logs()
+        low_signal_logs: list[Path] = []
         if args.all:
             to_compile = all_logs
         else:
             to_compile = []
             for log_path in all_logs:
+                if not daily_log_has_compile_signal(log_path):
+                    low_signal_logs.append(log_path)
+                    continue
                 rel = log_path.name
                 prev = state.get("ingested", {}).get(rel, {})
                 if not prev or prev.get("hash") != file_hash(log_path):
                     to_compile.append(log_path)
+        if low_signal_logs:
+            print(
+                "Skipped low-signal daily logs: "
+                + ", ".join(log_path.name for log_path in low_signal_logs)
+            )
 
     if not to_compile:
         print("Nothing to compile — all daily logs are up to date.")
@@ -268,8 +376,18 @@ def main() -> None:
         print("\nDry run only: no Agent SDK session started, no wiki files changed.")
         return
 
+    if args.mark_manual:
+        mark_daily_log_manually_compiled(to_compile[0], state, args.manual_note)
+        print(
+            "\nManual compile mark written: "
+            f"{to_compile[0].name} (cost $0.00, backend manual/Codex)."
+        )
+        print("No wiki, index, or log files were changed by this command.")
+        return
+
     total_cost = 0.0
     failed_logs: list[str] = []
+    compiled_logs: list[str] = []
     for i, log_path in enumerate(to_compile, 1):
         print(f"\n[{i}/{len(to_compile)}] Compiling {log_path.name}...")
         try:
@@ -279,16 +397,26 @@ def main() -> None:
             print(f"  Failed: {e}", file=sys.stderr)
             continue
         total_cost += cost
+        compiled_logs.append(log_path.name)
         print("  Done.")
 
-    # Rebuild index with enriched annotations and By Project section
-    from rebuild_index import rebuild_and_write_index
+    if compiled_logs:
+        # Rebuild index with enriched annotations and By Project section
+        from rebuild_index import rebuild_and_write_index
 
-    rebuild_and_write_index()
-    print("Index enriched with project tags and word counts.")
+        rebuild_and_write_index()
+        print("Index enriched with project tags and word counts.")
+    else:
+        print("No logs compiled successfully; skipping index rebuild.")
 
     articles = list_wiki_articles()
-    print(f"\nCompilation complete. Total cost: ${total_cost:.2f}")
+    if failed_logs and not compiled_logs:
+        completion_label = "Compilation failed"
+    elif failed_logs:
+        completion_label = "Compilation partially complete"
+    else:
+        completion_label = "Compilation complete"
+    print(f"\n{completion_label}. Total cost: ${total_cost:.2f}")
     print(f"Knowledge base: {len(articles)} articles")
 
     if failed_logs:

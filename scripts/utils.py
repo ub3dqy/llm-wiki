@@ -164,6 +164,42 @@ def list_daily_logs() -> list[Path]:
     return sorted(DAILY_DIR.glob("*.md"))
 
 
+_DAILY_ENTRY_HEADER_RE = re.compile(r"(?m)^## \[[^\]]+\][^\n]*$")
+_LOW_SIGNAL_DAILY_ENTRY_PREFIXES = ("Your organization does not have access to Claude.",)
+
+
+def _iter_daily_entries(content: str) -> list[tuple[str, str]]:
+    """Return ``(header, body)`` pairs for structured daily log entries."""
+    headers = list(_DAILY_ENTRY_HEADER_RE.finditer(content))
+    entries: list[tuple[str, str]] = []
+    for idx, match in enumerate(headers):
+        body_start = match.end()
+        body_end = headers[idx + 1].start() if idx + 1 < len(headers) else len(content)
+        entries.append((match.group(0), content[body_start:body_end]))
+    return entries
+
+
+def daily_log_has_compile_signal(path: Path) -> bool:
+    """Return True when a daily log contains narrative worth compiling.
+
+    Tool-capture-only logs preserve command history but normally do not contain enough
+    context to justify an Agent SDK compile turn. Known Agent SDK auth-error stubs are
+    also operational noise, not durable wiki knowledge.
+    """
+    entries = _iter_daily_entries(path.read_text(encoding="utf-8"))
+    if not entries:
+        return False
+
+    for header, body in entries:
+        normalized_body = "\n".join(line.strip() for line in body.splitlines() if line.strip())
+        if "tool-capture" in header:
+            continue
+        if any(normalized_body.startswith(prefix) for prefix in _LOW_SIGNAL_DAILY_ENTRY_PREFIXES):
+            continue
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Content aggregation
 # ---------------------------------------------------------------------------

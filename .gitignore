@@ -35,6 +35,7 @@ index.md
 # (no real usernames). See feedback_codex_task_handoff_workflow memory.
 
 # Working configs with personal paths (use .example versions)
+.mcp.json
 skills/wiki-save/SKILL.md
 codex-hooks.example.json
 scripts/project_aliases.local.json

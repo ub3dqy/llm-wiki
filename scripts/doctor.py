@@ -71,7 +71,12 @@ def check_wiki_structure() -> CheckResult:
 
 def check_env_settings() -> CheckResult:
     try:
-        from config import WIKI_COMPILE_AFTER_HOUR, WIKI_MAX_TURNS, WIKI_TIMEZONE
+        from config import (
+            WIKI_AGENT_BACKEND,
+            WIKI_COMPILE_AFTER_HOUR,
+            WIKI_MAX_TURNS,
+            WIKI_TIMEZONE,
+        )
 
         ZoneInfo("UTC")
 
@@ -87,7 +92,10 @@ def check_env_settings() -> CheckResult:
         if WIKI_MAX_TURNS < 1:
             return CheckResult("env_settings", False, f"WIKI_MAX_TURNS={WIKI_MAX_TURNS} invalid")
 
-        detail = f"timezone={timezone_key}, compile_hour={WIKI_COMPILE_AFTER_HOUR}"
+        detail = (
+            f"timezone={timezone_key}, compile_hour={WIKI_COMPILE_AFTER_HOUR}, "
+            f"agent_backend={WIKI_AGENT_BACKEND}"
+        )
         if raw_timezone and raw_timezone != timezone_key:
             detail += (
                 f" (warning: invalid WIKI_TIMEZONE={raw_timezone!r}, fell back to {timezone_key})"
@@ -172,21 +180,17 @@ def _parse_flush_log_events() -> dict[str, object]:
             elif "[compile]" in tail:
                 stats["compile_fatal_errors"] = int(stats["compile_fatal_errors"]) + 1
                 if ts >= cutoff_24h:
-                    stats["compile_fatal_errors_24h"] = int(
-                        stats["compile_fatal_errors_24h"]
-                    ) + 1
+                    stats["compile_fatal_errors_24h"] = int(stats["compile_fatal_errors_24h"]) + 1
                 latest_compile = stats["latest_compile_fatal_ts"]
                 if latest_compile is None or ts > latest_compile:
                     stats["latest_compile_fatal_ts"] = ts
 
         if "[flush]" in tail and "Agent SDK exited non-zero after emitting result" in tail:
-            stats["flush_salvaged_reader_errors"] = int(
-                stats["flush_salvaged_reader_errors"]
-            ) + 1
+            stats["flush_salvaged_reader_errors"] = int(stats["flush_salvaged_reader_errors"]) + 1
             if ts >= cutoff_24h:
-                stats["flush_salvaged_reader_errors_24h"] = int(
-                    stats["flush_salvaged_reader_errors_24h"]
-                ) + 1
+                stats["flush_salvaged_reader_errors_24h"] = (
+                    int(stats["flush_salvaged_reader_errors_24h"]) + 1
+                )
             latest_salvaged = stats["latest_flush_salvaged_reader_ts"]
             if latest_salvaged is None or ts > latest_salvaged:
                 stats["latest_flush_salvaged_reader_ts"] = ts
@@ -196,9 +200,7 @@ def _parse_flush_log_events() -> dict[str, object]:
         ):
             stats["flush_pipeline_failures"] = int(stats["flush_pipeline_failures"]) + 1
             if ts >= cutoff_24h:
-                stats["flush_pipeline_failures_24h"] = int(
-                    stats["flush_pipeline_failures_24h"]
-                ) + 1
+                stats["flush_pipeline_failures_24h"] = int(stats["flush_pipeline_failures_24h"]) + 1
             latest_failure = stats["latest_flush_pipeline_failure_ts"]
             if latest_failure is None or ts > latest_failure:
                 stats["latest_flush_pipeline_failure_ts"] = ts
@@ -382,6 +384,20 @@ def check_flush_pipeline_correctness() -> CheckResult:
 def check_total_tokens_injection() -> CheckResult:
     """Probe whether Anthropic's <total_tokens> injection is active on this account."""
     try:
+        from config import WIKI_AGENT_BACKEND
+    except ImportError:
+        return CheckResult(
+            "total_tokens_injection", False, "Could not load config for backend selection"
+        )
+
+    if WIKI_AGENT_BACKEND != "claude":
+        return CheckResult(
+            "total_tokens_injection",
+            True,
+            f"Skipped — WIKI_AGENT_BACKEND={WIKI_AGENT_BACKEND}; Claude Agent SDK disabled.",
+        )
+
+    try:
         import asyncio
 
         from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
@@ -412,6 +428,17 @@ def check_total_tokens_injection() -> CheckResult:
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         result += block.text
+                if "does not have access to claude" in result.lower():
+                    return f"ACCOUNT_ACCESS_UNAVAILABLE: {result.strip()}"
+            if message.__class__.__name__ == "ResultMessage" and getattr(
+                message, "is_error", False
+            ):
+                result_text = getattr(message, "result", "")
+                if (
+                    isinstance(result_text, str)
+                    and "does not have access to claude" in result_text.lower()
+                ):
+                    return f"ACCOUNT_ACCESS_UNAVAILABLE: {result_text.strip()}"
         return result.strip()
 
     try:
@@ -424,6 +451,12 @@ def check_total_tokens_injection() -> CheckResult:
         )
 
     normalized = result_text.strip().upper()
+    if normalized.startswith("ACCOUNT_ACCESS_UNAVAILABLE:"):
+        return CheckResult(
+            "total_tokens_injection",
+            True,
+            "Skipped — Agent SDK account access is unavailable; see agent_sdk_account_access.",
+        )
     if normalized == "INJECTION_ACTIVE":
         return CheckResult(
             "total_tokens_injection",
@@ -443,6 +476,101 @@ def check_total_tokens_injection() -> CheckResult:
         True,
         f"Probe returned unexpected output: {result_text[:200]!r}. Treating as non-blocking; inspect manually if needed.",
     )
+
+
+def _extract_agent_message_text(message: object) -> str:
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return content
+    if not content:
+        return ""
+
+    parts: list[str] = []
+    for block in content:
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            parts.append(text)
+    return "".join(parts)
+
+
+def _agent_result_error_text(message: object) -> str:
+    result = getattr(message, "result", None)
+    if isinstance(result, str) and result.strip():
+        return result.strip()
+    text = _extract_agent_message_text(message).strip()
+    if text:
+        return text
+    error = getattr(message, "error", None)
+    if error:
+        return str(error)
+    return "Agent SDK returned an error result"
+
+
+def check_agent_sdk_account_access() -> CheckResult:
+    """Full-gate probe for Agent SDK account access used by flush/compile."""
+    try:
+        from config import WIKI_AGENT_BACKEND
+    except ImportError:
+        return CheckResult(
+            "agent_sdk_account_access", False, "Could not load config for backend selection"
+        )
+
+    if WIKI_AGENT_BACKEND != "claude":
+        return CheckResult(
+            "agent_sdk_account_access",
+            True,
+            f"Skipped — WIKI_AGENT_BACKEND={WIKI_AGENT_BACKEND}; Claude Agent SDK disabled.",
+        )
+
+    try:
+        import asyncio
+
+        from claude_agent_sdk import ClaudeAgentOptions, query
+    except ImportError:
+        return CheckResult("agent_sdk_account_access", False, "claude_agent_sdk is not importable")
+
+    async def _run_probe() -> tuple[bool, str]:
+        observed_text = ""
+        observed_error = ""
+        try:
+            async for message in query(
+                prompt="Diagnostic check. Reply with exactly OK.",
+                options=ClaudeAgentOptions(
+                    cwd=str(ROOT_DIR),
+                    allowed_tools=[],
+                    max_turns=1,
+                    extra_args={"strict-mcp-config": None},
+                ),
+            ):
+                text = _extract_agent_message_text(message)
+                if text:
+                    observed_text += text
+                    if "does not have access to claude" in text.lower():
+                        return False, text.strip()
+
+                if message.__class__.__name__ == "ResultMessage":
+                    result_text = getattr(message, "result", None)
+                    if isinstance(result_text, str):
+                        observed_text += result_text
+                    if getattr(message, "is_error", False):
+                        return False, _agent_result_error_text(message)
+
+                message_error = getattr(message, "error", None)
+                if message_error:
+                    return False, f"{message_error}: {text.strip() or observed_error}"
+        except Exception as exc:  # noqa: BLE001
+            if observed_error:
+                return False, observed_error
+            return False, f"{type(exc).__name__}: {exc}"
+
+        if observed_error:
+            return False, observed_error
+        if observed_text.strip() == "OK":
+            return True, "Agent SDK account access probe returned OK"
+        return False, f"Unexpected Agent SDK probe response: {observed_text.strip()!r}"
+
+    ok, detail = asyncio.run(_run_probe())
+    return CheckResult("agent_sdk_account_access", ok, detail)
 
 
 def check_python() -> CheckResult:
@@ -631,6 +759,18 @@ def check_stop_smoke() -> CheckResult:
 
 
 def check_flush_roundtrip() -> CheckResult:
+    try:
+        from config import WIKI_AGENT_BACKEND
+    except ImportError:
+        return CheckResult("flush_roundtrip", False, "Could not load config for backend selection")
+
+    if WIKI_AGENT_BACKEND != "claude":
+        return CheckResult(
+            "flush_roundtrip",
+            True,
+            f"Skipped — WIKI_AGENT_BACKEND={WIKI_AGENT_BACKEND}; Agent SDK flush disabled.",
+        )
+
     test_session_id = f"doctor-roundtrip-{uuid.uuid4().hex[:8]}"
     transcript_path = SCRIPTS_DIR / f"doctor-transcript-{test_session_id}.jsonl"
     marker_path = SCRIPTS_DIR / "flush-test-marker.txt"
@@ -802,7 +942,15 @@ def check_wiki_cli_status_smoke() -> CheckResult:
         return CheckResult("wiki_cli_status_smoke", False, output)
 
     lowered = output.lower()
-    required_markers = ("wiki status:", "articles:", "last compile:", "total cost:")
+    required_markers = (
+        "wiki status:",
+        "articles:",
+        "compile-worthy:",
+        "pending:",
+        "low-signal:",
+        "last compile:",
+        "total cost:",
+    )
     missing = [marker for marker in required_markers if marker not in lowered]
     if missing:
         return CheckResult(
@@ -938,6 +1086,7 @@ def get_full_checks() -> list[CheckResult]:
         check_wiki_cli_lint_smoke(),
         check_wiki_cli_rebuild_check_smoke(),
         check_path_normalization(),
+        check_agent_sdk_account_access(),
         check_session_start_smoke(),
         check_user_prompt_smoke(),
         check_stop_smoke(),

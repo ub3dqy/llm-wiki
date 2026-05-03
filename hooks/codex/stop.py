@@ -27,7 +27,7 @@ HOOKS_DIR = ROOT / "hooks"
 SCRIPTS_DIR = ROOT / "scripts"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
-from config import WIKI_MIN_FLUSH_CHARS, WIKI_TIMEZONE  # noqa: E402
+from config import WIKI_AGENT_BACKEND, WIKI_MIN_FLUSH_CHARS, WIKI_TIMEZONE  # noqa: E402
 
 sys.path.insert(0, str(HOOKS_DIR))
 from hook_utils import (  # noqa: E402
@@ -110,6 +110,11 @@ def main_light() -> None:
     last_assistant_message = hook_input.get("last_assistant_message")
     logging.info("Stop fired: session=%s turn=%s", session_id, turn_id)
 
+    if WIKI_AGENT_BACKEND != "claude":
+        logging.info("SKIP: WIKI_AGENT_BACKEND=%s; Agent SDK flush disabled", WIKI_AGENT_BACKEND)
+        _emit_ok()
+        return
+
     if hook_input.get("stop_hook_active"):
         logging.info("SKIP: stop_hook_active already true")
         _emit_ok()
@@ -153,6 +158,13 @@ def main_worker() -> None:
     degraded_min = max(50, WIKI_MIN_FLUSH_CHARS // 4)
 
     logging.info("[stop-worker] started session=%s", session_id)
+
+    if WIKI_AGENT_BACKEND != "claude":
+        logging.info(
+            "[stop-worker] SKIP: WIKI_AGENT_BACKEND=%s; Agent SDK flush disabled",
+            WIKI_AGENT_BACKEND,
+        )
+        return
 
     if not transcript_path_str:
         if isinstance(last_assistant_message, str) and last_assistant_message.strip():

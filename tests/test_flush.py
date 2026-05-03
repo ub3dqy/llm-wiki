@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -68,6 +69,7 @@ def test_run_flush_uses_streamed_result_when_sdk_fails_after_result(monkeypatch)
     monkeypatch.setattr(claude_agent_sdk, "ClaudeAgentOptions", FakeOptions)
     monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
     monkeypatch.setattr(flush_module, "append_to_daily_log", fake_append)
+    monkeypatch.setattr(flush_module, "WIKI_AGENT_BACKEND", "claude")
 
     asyncio.run(flush_module.run_flush("context", "session-id", "memory-claude"))
 
@@ -95,8 +97,36 @@ def test_run_flush_does_not_salvage_without_result_message(monkeypatch) -> None:
     monkeypatch.setattr(claude_agent_sdk, "ClaudeAgentOptions", FakeOptions)
     monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
     monkeypatch.setattr(flush_module, "append_to_daily_log", fake_append)
+    monkeypatch.setattr(flush_module, "WIKI_AGENT_BACKEND", "claude")
 
     asyncio.run(flush_module.run_flush("context", "session-id", "memory-claude"))
 
     assert call_count == 3
     assert appended == []
+
+
+def test_run_flush_skips_manual_backend(monkeypatch) -> None:
+    appended: list[str] = []
+    monkeypatch.setattr(flush_module, "WIKI_AGENT_BACKEND", "manual")
+    monkeypatch.setattr(flush_module, "append_to_daily_log", appended.append)
+
+    asyncio.run(flush_module.run_flush("context", "session-id", "memory-claude"))
+
+    assert appended == []
+
+
+def test_main_manual_backend_skips_without_recording_session(tmp_path, monkeypatch) -> None:
+    context_file = tmp_path / "context.md"
+    context_file.write_text("valuable context", encoding="utf-8")
+
+    def fail_if_called(*args: object, **kwargs: object) -> None:
+        pytest.fail("manual backend should not acquire locks or write flush state")
+
+    monkeypatch.setattr(flush_module, "WIKI_AGENT_BACKEND", "manual")
+    monkeypatch.setattr(flush_module, "acquire_flush_lock", fail_if_called)
+    monkeypatch.setattr(flush_module, "save_flush_state", fail_if_called)
+    monkeypatch.setattr(sys, "argv", ["flush.py", str(context_file), "session-id"])
+
+    flush_module.main()
+
+    assert not context_file.exists()

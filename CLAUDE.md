@@ -155,6 +155,10 @@ mode all three rules are designed to prevent.
 Handled by `scripts/compile.py`. Triggered automatically after 18:00 or manually.
 
 1. Read unprocessed daily logs from `daily/`.
+1a. Daily logs that contain only `tool-capture` micro-events or known Agent SDK
+    auth-error stubs are treated as low-signal operational trace and skipped by
+    default. Use `compile.py --file ...` or `compile.py --all` when an operator
+    explicitly wants to force compilation anyway.
 2. Extract 3-7 distinct concepts per log.
 3. Create concept articles in `wiki/concepts/` with full frontmatter, including `confidence`.
 4. Create connection articles in `wiki/connections/` for cross-cutting insights.
@@ -182,7 +186,8 @@ Handled by `scripts/lint.py`. Run periodically.
 
 1. **Broken links** — `[[wikilinks]]` pointing to non-existent pages
 2. **Orphan pages** — pages with zero inbound links
-3. **Orphan sources** — daily logs not yet compiled
+3. **Orphan sources** — compile-worthy daily logs not yet compiled. Low-signal
+   tool-capture-only logs are ignored by this warning.
 4. **Stale articles** — source changed since compilation
 5. **Missing backlinks** — asymmetric links (A→B but no B→A)
 6. **Sparse articles** — fewer than 200 words
@@ -198,7 +203,8 @@ two modes:
   `wiki_cli.py status`, `wiki_cli.py lint --structural-only`,
   `wiki_cli.py rebuild --check`, and path normalization
 - `--full` for the recommended manual pre-merge check: everything in quick mode
-  plus runtime/WSL/Codex checks and hook smokes
+  plus runtime/WSL/Codex checks, hook smokes, and a live Agent SDK account-access
+  probe for the flush/compile path
 
 ### Gate roles
 
@@ -226,6 +232,13 @@ When `lint --full` runs from WSL, the contradiction check may delegate to the
 Windows `uv` runtime to keep results aligned with the primary project setup.
 
 Reports saved to `reports/lint-YYYY-MM-DD.md`.
+Source-drift checks are advisory and must be explicitly requested with `--source-drift`.
+For maintenance batches, prefer scoped/export runs such as
+`uv run python scripts/lint.py --source-drift --domain docs.python.org --export-only`;
+this writes a dated `reports/source-drift-*.md` snapshot without mutating validator state.
+Use `--source-article sources/<slug>.md` when a review batch should be limited to one
+specific source article. Add `--ledger` when the run should append a durable pending-review
+entry to `docs/codex-tasks/source-drift-review-ledger.md`.
 
 ## Auto-Capture (hooks)
 
@@ -248,16 +261,33 @@ knowledge loop useful during active work.
 
 `flush.py` uses Claude Agent SDK to evaluate whether the conversation contained valuable knowledge. If yes, it appends a structured summary to `daily/YYYY-MM-DD.md`.
 
+`WIKI_AGENT_BACKEND` controls whether SDK-dependent automation is active:
+
+- `claude` (default) — `flush.py`, `compile.py`, `query.py`, and `seed.py`
+  can start Claude Agent SDK sessions.
+- `manual` — Claude Agent SDK calls are disabled. Codex/humans maintain
+  wiki pages directly, `query.py --preview` remains available for candidate
+  discovery, and SDK-dependent hooks skip instead of spawning background
+  Agent SDK processes. SessionStart/UserPromptSubmit local retrieval still work.
+
 When hooks spawn `flush.py` or `compile.py` in the background, keep those subprocesses
 on the project `uv run --directory <repo>` path so `claude_agent_sdk` and the project
 dependency environment stay consistent across Windows and WSL.
 
 After 18:00, flush.py auto-triggers `compile.py` to process the day's logs into wiki articles.
+If the Agent SDK account is unavailable, `doctor.py --full` reports
+`agent_sdk_account_access` as a blocking external integration failure in `claude`
+backend mode, and `compile.py` fails before updating ingest state. In `manual`
+backend mode, `doctor.py --full` skips SDK probes and the flush roundtrip. Only
+mark a daily log ingested manually after Codex/human review has updated the
+relevant wiki pages, `index.md`, and `log.md`; then record the state hash with
+`compile.py --mark-manual --file ... --manual-note ...`.
 
 ## CLI Commands
 
 ```bash
 # Compile daily logs into wiki articles
+# Normal mode skips low-signal tool-capture-only daily logs.
 uv run python scripts/compile.py
 
 # Compile a specific log
@@ -271,6 +301,9 @@ uv run python scripts/compile.py --dry-run
 
 # Show staging-style summary for one file without writing
 uv run python scripts/compile.py --file daily/2026-04-10.md --dry-run
+
+# After manual/Codex compilation, mark state without starting Agent SDK
+uv run python scripts/compile.py --file daily/2026-04-10.md --mark-manual --manual-note "updated concepts/x and log.md"
 
 # Query the knowledge base
 uv run python scripts/query.py "your question here"
@@ -286,6 +319,15 @@ uv run python scripts/lint.py
 
 # Run only structural checks (free, no API)
 uv run python scripts/lint.py --structural-only
+
+# Advisory source-drift snapshot for one host (network I/O, non-blocking)
+uv run python scripts/lint.py --source-drift --domain docs.python.org --export-only
+
+# Advisory source-drift snapshot for one source article
+uv run python scripts/lint.py --source-drift --source-article sources/python-docs.md --export-only
+
+# Advisory source-drift snapshot plus durable pending-review ledger entry
+uv run python scripts/lint.py --source-drift --source-article sources/python-docs.md --export-only --ledger
 
 # Rebuild index with enriched annotations [project] (Nw) + By Project section
 uv run python scripts/rebuild_index.py
@@ -304,6 +346,7 @@ uv run python scripts/seed.py "path/to/project" --project-name myproject
 # Wiki CLI (unified interface)
 uv run python scripts/wiki_cli.py doctor
 uv run python scripts/wiki_cli.py doctor --full
+# Status includes compile-worthy/pending/low-signal daily log counts.
 uv run python scripts/wiki_cli.py status
 uv run python scripts/wiki_cli.py doctor --quick
 uv run python scripts/wiki_cli.py doctor --full

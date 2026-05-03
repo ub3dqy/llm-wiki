@@ -121,7 +121,17 @@ def check_claude_agent_sdk() -> bool:
     return True
 
 
-def print_next_steps(repo_root: Path) -> None:
+def get_agent_backend() -> str:
+    try:
+        sys.path.insert(0, str(ROOT_DIR / "scripts"))
+        from config import WIKI_AGENT_BACKEND
+
+        return WIKI_AGENT_BACKEND
+    except Exception:
+        return "claude"
+
+
+def print_next_steps(repo_root: Path, agent_backend: str) -> None:
     repo_path = str(repo_root.resolve())
     print()
     print(f"[ok] Wiki structure ready at {repo_path}")
@@ -130,17 +140,25 @@ def print_next_steps(repo_root: Path) -> None:
     print("0. Review your .env file (created from .env.example):")
     print("   cat .env")
     print("   Adjust WIKI_TIMEZONE, WIKI_COMPILE_AFTER_HOUR etc. to your preferences.")
-    print("1. Add hooks to your ~/.claude/settings.json:")
-    print("   See settings.example.json - replace /path/to/llm-wiki with:")
-    print(f"   {repo_path}")
-    print("2. Copy the /wiki-save skill:")
-    print("   cp -r skills/wiki-save ~/.claude/skills/wiki-save")
-    print("   Then edit ~/.claude/skills/wiki-save/SKILL.md and replace")
-    print(f"   /path/to/llm-wiki with: {repo_path}")
-    print("3. (Optional, for Codex users) Copy codex-hooks.template.json to")
-    print("   ~/.codex/hooks.json and replace /path/to/llm-wiki with:")
-    print(f"   {repo_path}")
-    print("4. Verify the install:")
+    if agent_backend == "claude":
+        print("1. Add hooks to your ~/.claude/settings.json:")
+        print("   See settings.example.json - replace /path/to/llm-wiki with:")
+        print(f"   {repo_path}")
+        print("2. Copy the /wiki-save skill:")
+        print("   cp -r skills/wiki-save ~/.claude/skills/wiki-save")
+        print("   Then edit ~/.claude/skills/wiki-save/SKILL.md and replace")
+        print(f"   /path/to/llm-wiki with: {repo_path}")
+        print("3. (Optional, for Codex users) Copy codex-hooks.template.json to")
+        print("   ~/.codex/hooks.json and replace /path/to/llm-wiki with:")
+        print(f"   {repo_path}")
+    else:
+        print("1. Manual/Codex mode is active (WIKI_AGENT_BACKEND=manual).")
+        print("   Claude Agent SDK hooks are disabled; use query --preview, lint, doctor,")
+        print("   and direct wiki edits for maintenance.")
+        print("2. Optional: copy codex-hooks.template.json to ~/.codex/hooks.json")
+        print("   and replace /path/to/llm-wiki with:")
+        print(f"   {repo_path}")
+    print("3. Verify the install:")
     print("   uv run python scripts/doctor.py --quick")
 
 
@@ -159,12 +177,15 @@ def main() -> int:
     if index_changed:
         ok = sync_index(dry_run=args.dry_run) and ok
 
+    agent_backend = get_agent_backend()
     sdk_available = check_claude_agent_sdk()
-    if not sdk_available:
+    if agent_backend == "claude" and not sdk_available:
         print("[warn] claude_agent_sdk not available. Run: uv sync")
         ok = False
+    elif agent_backend != "claude":
+        print(f"[info] WIKI_AGENT_BACKEND={agent_backend}; skipping claude_agent_sdk check")
 
-    print_next_steps(ROOT_DIR)
+    print_next_steps(ROOT_DIR, agent_backend)
 
     return 0 if ok else 1
 

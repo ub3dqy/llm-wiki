@@ -18,7 +18,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from config import WIKI_COMPILE_AFTER_HOUR, WIKI_TIMEZONE
+from config import WIKI_AGENT_BACKEND, WIKI_COMPILE_AFTER_HOUR, WIKI_TIMEZONE
 from runtime_utils import build_uv_python_cmd
 
 # Recursion guard: flush.py uses Agent SDK → Claude Code → hook → flush.py
@@ -251,6 +251,14 @@ def append_to_daily_log(content: str) -> Path:
 
 async def run_flush(context: str, session_id: str, project_name: str = "unknown") -> None:
     """Use Claude Agent SDK to evaluate and summarize the conversation context."""
+    if WIKI_AGENT_BACKEND != "claude":
+        logging.info(
+            "SKIP: WIKI_AGENT_BACKEND=%s; Agent SDK flush disabled for session %s",
+            WIKI_AGENT_BACKEND,
+            session_id,
+        )
+        return
+
     from claude_agent_sdk import ClaudeAgentOptions, query
 
     try:
@@ -325,11 +333,7 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
                 result_text += _extract_agent_message_text(message)
             break  # success
         except Exception as e:
-            if (
-                saw_result_message
-                and result_text.strip()
-                and _is_retryable_agent_sdk_error(e)
-            ):
+            if saw_result_message and result_text.strip() and _is_retryable_agent_sdk_error(e):
                 logging.warning(
                     "Agent SDK exited non-zero after emitting result; using streamed result: %s",
                     e,
@@ -370,6 +374,10 @@ Keep the summary concise — aim for 200-500 words. Include project tag: `projec
 
 def maybe_trigger_compilation() -> None:
     """Spawn compile.py if it's past the trigger hour and today hasn't been compiled."""
+    if WIKI_AGENT_BACKEND != "claude":
+        logging.info("SKIP: WIKI_AGENT_BACKEND=%s; auto-compile disabled", WIKI_AGENT_BACKEND)
+        return
+
     now = datetime.now(WIKI_TIMEZONE)
     if now.hour < WIKI_COMPILE_AFTER_HOUR:
         return
@@ -472,6 +480,15 @@ def main() -> None:
     if not context_file.exists():
         logging.error("Context file not found: %s", context_file)
         sys.exit(1)
+
+    if WIKI_AGENT_BACKEND != "claude":
+        logging.info(
+            "SKIP: WIKI_AGENT_BACKEND=%s; flush.py disabled for session %s",
+            WIKI_AGENT_BACKEND,
+            session_id,
+        )
+        context_file.unlink(missing_ok=True)
+        return
 
     # Concurrency control: max MAX_CONCURRENT_FLUSH parallel flush processes
     lock_path = acquire_flush_lock(session_id)

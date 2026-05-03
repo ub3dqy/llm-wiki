@@ -106,6 +106,15 @@ def _env_timezone(name: str, default: str) -> ZoneInfo:
             return ZoneInfo("UTC")
 
 
+def _env_choice(name: str, default: str, choices: set[str]) -> str:
+    raw = os.environ.get(name, default).strip().lower() or default
+    if raw not in choices:
+        allowed = ", ".join(sorted(choices))
+        print(f"[config] warning: {name}={raw!r} is invalid, using {default} ({allowed})")
+        return default
+    return raw
+
+
 # --- Timezone-aware clock ---
 # Default UTC so fresh clones behave deterministically.
 WIKI_TIMEZONE: ZoneInfo = _env_timezone("WIKI_TIMEZONE", "UTC")
@@ -116,6 +125,7 @@ WIKI_MAX_TURNS: int = _env_int("WIKI_MAX_TURNS", 30, min_val=1)
 WIKI_MAX_CONTEXT_CHARS: int = _env_int("WIKI_MAX_CONTEXT_CHARS", 15_000, min_val=500)
 WIKI_DEBOUNCE_SEC: int = _env_int("WIKI_DEBOUNCE_SEC", 10, min_val=0)
 WIKI_MIN_FLUSH_CHARS: int = _env_int("WIKI_MIN_FLUSH_CHARS", 500, min_val=0)
+WIKI_AGENT_BACKEND: str = _env_choice("WIKI_AGENT_BACKEND", "claude", {"claude", "manual"})
 
 
 def now_iso() -> str:

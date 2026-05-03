@@ -565,3 +565,136 @@ unsalvaged failure at `2026-04-27 15:45:53`.
 GitHub issue update:
 
 - <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4327294308>
+
+## Snapshot — 2026-04-30 20:00 UTC
+
+### GitHub issue state
+
+- issue state: `OPEN`
+- latest issue update: `2026-04-27T13:20:08Z`
+- remote paper-trail status: still open after the mitigation updates
+
+### Post-bump evidence from `scripts/flush.log`
+
+Command basis: PowerShell count over log lines after `2026-04-14 20:51:59`, the PR #30 merge
+timestamp used by this tracking log.
+
+```text
+POST_FLUSH_OK=1122
+POST_FLUSH_FAILED_EXIT=46
+POST_FLUSH_FATAL_RAW=84
+POST_FLUSH_SALVAGED_POST_RESULT=16
+POST_COMPILE_FATAL=14
+LAST_FLUSH_OK=2026-04-29 01:47:12
+LAST_FAILED_FLUSH_EXIT=2026-04-27 15:45:53
+LAST_FLUSH_FATAL_RAW=2026-04-29 01:47:12
+LAST_FLUSH_SALVAGED=2026-04-29 01:47:12
+LAST_COMPILE_FATAL=2026-04-29 01:23:54
+LOSS_BOUNDARY_SUCCESS_RATE=96.06%
+```
+
+Interpretation:
+
+- the post-bump loss-boundary success rate remains above the 90% issue threshold
+- the latest unsalvaged failed flush Agent SDK exit is `2026-04-27 15:45:53`
+- later raw `[flush] Fatal error in message reader` events were salvaged after a streamed result,
+  so they did not reset the data-loss observation window
+- compile.py still has same-SDK residuals, latest `2026-04-29 01:23:54`, but they remain outside
+  issue #16 scope
+
+### Current active-error signal
+
+From `doctor --quick`:
+
+```text
+[PASS] flush_pipeline_correctness: No failed flush Agent SDK exits in last 24h (historical failed flushes: 18 in last 7d, most recent 2026-04-27 15:45:53, tracked in issue #16) [reader fatal raw: 0 in last 24h / 56 in last 7d; salvaged post-result: 0 in last 24h / 16 in last 7d] [note: compile residual 4 in last 7d, latest 2026-04-29 01:23:54]
+```
+
+Operational meaning:
+
+- Bug H is no longer active in the current 24-hour project-defined data-loss window.
+- Historical failed exits remain in the 7-day context, so the issue should not be auto-closed
+  without an explicit closure decision and a GitHub paper-trail update.
+
+### Recommendation
+
+`candidate for closure review` — the active 24-hour failed-exit window is clean and the aggregate
+post-bump success rate is above threshold. Do not close or comment on issue #16 automatically; user
+authorization is still required for any remote GitHub action.
+
+## Snapshot — 2026-05-03 18:30 UTC
+
+### Compile.py residual classification
+
+`daily/2026-04-27.md` was retried with `compile.py --file daily/2026-04-27.md` while clearing the
+pending compile queue. The live Agent SDK probe showed the root cause for the current compile
+blocker:
+
+```text
+Your organization does not have access to Claude. Please login again or contact your administrator.
+```
+
+Implementation changes made in response:
+
+- `compile.py` now passes `extra_args={"strict-mcp-config": None}` like `flush.py`, keeping the
+  subprocess non-interactive.
+- `compile.py` detects Agent SDK `ResultMessage.is_error` and reports the concrete access error
+  instead of the opaque `Command failed with exit code 1`.
+- if no logs compile successfully, `compile.py` skips index rebuild and prints
+  `Compilation failed`, not `Compilation complete`.
+- `doctor.py --full` now includes `agent_sdk_account_access`, a live account-access probe for the
+  Agent SDK path used by flush/compile. `total_tokens_injection` skips cleanly when that access
+  probe is unavailable.
+
+Current status:
+
+- issue #16 remains about the flush data-loss boundary, not compile account access.
+- pending compile logs remain `2026-04-26.md (changed)` and `2026-04-27.md (new)`.
+- do not manually mark these logs ingested; fix Claude account access and rerun compile.
+
+## Snapshot — 2026-05-03 19:35 UTC
+
+### Codex-only/manual backend transition
+
+Claude Code / Claude Agent SDK is currently unavailable for this workspace, so the local runtime
+has moved to `WIKI_AGENT_BACKEND=manual`.
+
+Implementation changes made in response:
+
+- `.env` can set `WIKI_AGENT_BACKEND=manual`, while `.env.example` documents the default
+  `claude` backend.
+- SDK-dependent hook paths (`session-end.py`, `pre-compact.py`, `hooks/codex/stop.py`),
+  `flush.py`, `compile.py`, `query.py`, and `seed.py` now skip or return explicit manual-mode
+  messages instead of trying to start Claude Agent SDK.
+- `doctor.py --full` skips Agent SDK account, token-injection, and flush-roundtrip probes in
+  manual backend mode.
+- `compile.py --mark-manual --manual-note ...` records a daily log as manually compiled only
+  after Codex/human wiki, index, and log updates have been performed.
+
+Current status:
+
+- issue #16 remains historical flush data-loss tracking, not a blocker for Codex-only wiki work.
+- pending compile logs remain `2026-04-26.md (changed)` and `2026-04-27.md (new)` until they are
+  manually reviewed and then marked with the new manual compile command.
+
+## Snapshot — 2026-05-03 20:05 UTC
+
+### Manual compile queue cleared
+
+Codex manually reviewed and compiled the two remaining compile-worthy daily logs:
+
+- `daily/2026-04-26.md` — changed tail after prior automated compile.
+- `daily/2026-04-27.md` — new high-signal log.
+
+Manual compile output was captured in local wiki/index/log/state:
+
+- created `[[concepts/claude-code-channels-mailbox-wakeup]]`
+- created `[[concepts/clauder-portable-launcher]]`
+- updated related mailbox, launcher, LLM Wiki, and Skolkovo grading pages
+- recorded both hashes through `compile.py --mark-manual --manual-note ...`
+
+Current status:
+
+- `wiki_cli.py status` reports `pending: 0`.
+- structural lint reports `0 errors, 0 warnings`; remaining items are advisory suggestions.
+- issue #16 remains historical flush data-loss tracking only.
