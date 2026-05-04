@@ -10,7 +10,7 @@ def test_seed_wiki_returns_false_manual_backend(monkeypatch, capsys) -> None:
 
     ok = asyncio.run(
         seed_module.seed_wiki(
-            {"files": {}, "src_tree": [], "path": "E:/Project/example"},
+            {"files": {}, "src_tree": [], "path": "/workspace/example"},
             "example",
         )
     )
