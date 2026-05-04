@@ -3,7 +3,7 @@
 **Created**: 2026-04-26T16:21:16Z
 **Author**: Codex
 **Project**: memory-claude
-**Status**: user-decisions-applied; Bug H remains open
+**Status**: superseded; user decisions applied; Bug H and umbrella #5 closed 2026-05-04
 **Delivery status**: mailbox delivered after session registration
 
 ## Why this exists
@@ -236,3 +236,15 @@ Operational consequence:
 - a new `[flush]` fatal at `2026-04-27 11:10:36` reset the meaningful re-check point
 - next local re-check should wait until after `2026-04-28 11:10:36` local log time if no newer
   `[flush]` fatal appears
+
+## 2026-05-04 Closure Postscript
+
+This review package is now superseded by the later Bug H tracking-log evidence.
+
+Current state:
+
+- issue #16 was closed as completed at `2026-05-04T07:34:10Z`
+- umbrella issue #5 was closed as completed at `2026-05-04T14:46:57Z`
+- `docs/codex-tasks/bug-h-issue-16-tracking-log.md` is the current paper trail for both closure
+  actions
+- the only remaining open GitHub issue is #1, the permanent roadmap/feedback thread

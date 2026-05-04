@@ -763,3 +763,31 @@ tracked separately from issue #16. They do not reset the flush.py data-loss obse
 - issue state after action: `CLOSED`
 - closed at: `2026-05-04T07:34:10Z`
 - closing comment: <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4369081207>
+
+## Umbrella follow-up — 2026-05-04 14:46 UTC
+
+After issue #16 was closed, Codex re-evaluated the capture-pipeline umbrella issue #5.
+
+### GitHub issue state
+
+- issue #5 state after action: `CLOSED`
+- closed at: `2026-05-04T14:46:57Z`
+- closing comment: <https://github.com/ub3dqy/llm-wiki/issues/5#issuecomment-4372002022>
+
+### Closure basis
+
+- all child / adjacent capture-pipeline blockers were closed: #6, #7, #8, #9, #10, #11, #13,
+  #16, #17, and #22
+- issue #1 remains open as the permanent roadmap/feedback thread and is not a capture-pipeline
+  blocker
+- local gates at the umbrella closure point:
+  - `doctor --quick`: PASS
+  - `doctor --full`: PASS
+  - `lint --structural-only`: 0 errors, 0 warnings
+  - `wiki_cli.py status`: pending compile queue 0
+  - `flush_pipeline_correctness`: no failed flush Agent SDK exits in the last 7 days
+
+### Current project issue state
+
+The capture-pipeline reliability wave is closed. The only remaining open GitHub issue is #1
+(`Roadmap and feedback thread`).
