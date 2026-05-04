@@ -698,3 +698,62 @@ Current status:
 - `wiki_cli.py status` reports `pending: 0`.
 - structural lint reports `0 errors, 0 warnings`; remaining items are advisory suggestions.
 - issue #16 remains historical flush data-loss tracking only.
+
+## Snapshot — 2026-05-04 07:35 UTC
+
+### GitHub issue state before closure
+
+- issue state: `OPEN`
+- latest issue update: `2026-04-27T13:20:08Z`
+- remote paper-trail status: still open after the `2375ebe` salvage mitigation
+
+### Current evidence from `scripts/flush.log`
+
+Command basis: PowerShell count over log lines after `2026-04-14 20:51:59`, the PR #30 merge
+timestamp used by this tracking log.
+
+```text
+POST_FLUSH_OK=1122
+POST_FLUSH_FAILED_EXIT=46
+POST_FLUSH_FATAL_RAW=84
+POST_FLUSH_SALVAGED_POST_RESULT=16
+POST_COMPILE_FATAL=16
+LAST_FLUSH_OK=2026-04-29 01:47:12
+LAST_FAILED_FLUSH_EXIT=2026-04-27 15:45:53
+LAST_FLUSH_FATAL_RAW=2026-04-29 01:47:12
+LAST_FLUSH_SALVAGED=2026-04-29 01:47:12
+LAST_COMPILE_FATAL=2026-05-03 21:13:14
+POST_SALVAGE_FLUSH_OK=16
+POST_SALVAGE_FAILED_EXIT=0
+LOSS_BOUNDARY_SUCCESS_RATE=96.06%
+POST_SALVAGE_LOSS_BOUNDARY_SUCCESS_RATE=100%
+```
+
+### Gate evidence
+
+From `doctor --quick`:
+
+```text
+[PASS] flush_pipeline_correctness: No failed flush Agent SDK exits in last 24h (historical failed flushes: 15 in last 7d, most recent 2026-04-27 15:45:53, tracked in issue #16) [reader fatal raw: 0 in last 24h / 53 in last 7d; salvaged post-result: 0 in last 24h / 16 in last 7d] [note: compile residual 2 in last 24h / 5 in last 7d, latest 2026-05-03 21:13:14]
+```
+
+From `doctor --full`: all checks passed. Agent SDK live probes are skipped because the workspace is
+currently in `WIKI_AGENT_BACKEND=manual`.
+
+GitHub CI on `c53dd35`:
+
+- Personal Data Check: success
+- Wiki Lint / lint: success
+- Wiki Lint / pytest-windows: success
+
+### Closure decision
+
+`close as completed` for issue #16. The issue's project-defined data-loss boundary is clean:
+
+- the post-bump loss-boundary success rate is above the 90% acceptance threshold
+- there is no failed flush Agent SDK exit in the current 24-hour window
+- no unsalvaged failed flush Agent SDK exit appears after `2026-04-27 15:45:53`
+- post-result reader failures after `2375ebe` were salvaged and ended in `Flushed 99 chars`
+
+Scope note: compile.py residual Agent SDK failures and current Claude account/manual-backend state are
+tracked separately from issue #16. They do not reset the flush.py data-loss observation window.
