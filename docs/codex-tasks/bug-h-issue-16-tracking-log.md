@@ -757,3 +757,9 @@ GitHub CI on `c53dd35`:
 
 Scope note: compile.py residual Agent SDK failures and current Claude account/manual-backend state are
 tracked separately from issue #16. They do not reset the flush.py data-loss observation window.
+
+### Remote closure
+
+- issue state after action: `CLOSED`
+- closed at: `2026-05-04T07:34:10Z`
+- closing comment: <https://github.com/ub3dqy/llm-wiki/issues/16#issuecomment-4369081207>
