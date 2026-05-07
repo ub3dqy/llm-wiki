@@ -8,6 +8,7 @@ Usage:
     uv run python scripts/wiki_cli.py compile --file daily/2026-04-10.md --mark-manual --manual-note "updated concepts/x"
     uv run python scripts/wiki_cli.py query "question"   # query the wiki
     uv run python scripts/wiki_cli.py query "question" --preview
+    uv run python scripts/wiki_cli.py query "question" --save-answer-file answer.md --consulted concepts/foo
     uv run python scripts/wiki_cli.py lint               # run structural lint checks
     uv run python scripts/wiki_cli.py lint --full        # run full lint checks
     uv run python scripts/wiki_cli.py rebuild            # rebuild index

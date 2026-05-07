@@ -176,7 +176,9 @@ Handled by `scripts/query.py` or manually.
 4. Synthesize an answer with `[[wikilink]]` citations.
 5. Separate extracted facts, inferred synthesis, and to-verify claims when it matters.
 6. If the answer is substantial, offer to file it as a new page in `wiki/qa/`.
-7. If filed, update `index.md` and append to `log.md`.
+7. In `manual` backend mode, file an already-written answer with
+   `wiki_cli.py query "<question>" --save-answer-file answer.md --consulted concepts/<page>`.
+8. If filed, update `index.md` and append to `log.md`.
 
 ### Lint (health check)
 
@@ -313,6 +315,13 @@ uv run python scripts/query.py "your question here" --preview
 
 # Query and file the answer as a Q&A article
 uv run python scripts/query.py "your question" --file-back
+
+# Save an already-written manual/Codex answer as a Q&A article without Agent SDK
+uv run python scripts/wiki_cli.py query "your question" --save-answer-file answer.md --consulted concepts/llm-wiki-architecture
+
+# Benchmark production wiki retrieval before changing search backends
+uv run python scripts/retrieval_benchmark.py
+uv run python scripts/retrieval_benchmark.py --json
 
 # Run all lint checks (includes LLM contradiction check)
 uv run python scripts/lint.py

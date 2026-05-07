@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,7 @@ from utils import (
     parse_frontmatter_list,
     read_wiki_index,
     save_state,
+    slugify,
 )
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -154,6 +156,173 @@ def format_query_candidates(candidates: list[dict[str, str | int]]) -> str:
     return "\n".join(lines)
 
 
+def _frontmatter_string(value: str) -> str:
+    """Return a YAML-safe inline string using JSON quoting rules."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _frontmatter_list(values: list[str]) -> str:
+    """Return a YAML-safe inline list using JSON string quoting."""
+    return "[" + ", ".join(_frontmatter_string(value) for value in values) + "]"
+
+
+def normalize_article_slug(value: str) -> str:
+    """Normalize user-provided wiki article references to index-style slugs."""
+    normalized = value.strip().replace("\\", "/")
+    if normalized.startswith("[[") and normalized.endswith("]]"):
+        normalized = normalized[2:-2]
+    normalized = normalized.split("|", 1)[0]
+    if normalized.startswith("wiki/"):
+        normalized = normalized[len("wiki/") :]
+    if normalized.endswith(".md"):
+        normalized = normalized[:-3]
+    return normalized.strip("/")
+
+
+def _qa_path_for_slug(slug: str, explicit_slug: bool) -> Path:
+    """Return a collision-safe path for a new Q&A article."""
+    QA_DIR.mkdir(parents=True, exist_ok=True)
+    path = QA_DIR / f"{slug}.md"
+    if explicit_slug:
+        if path.exists():
+            raise FileExistsError(f"Q&A article already exists: {path}")
+        return path
+
+    candidate = path
+    counter = 2
+    while candidate.exists():
+        candidate = QA_DIR / f"{slug}-{counter}.md"
+        counter += 1
+    return candidate
+
+
+def normalize_and_validate_consulted_articles(values: list[str]) -> list[str]:
+    """Normalize consulted article refs and ensure they resolve inside wiki/."""
+    normalized: list[str] = []
+    wiki_root = WIKI_DIR.resolve()
+    for value in values:
+        slug = normalize_article_slug(value)
+        if not slug:
+            continue
+        candidate = (WIKI_DIR / f"{slug}.md").resolve()
+        if not candidate.is_relative_to(wiki_root) or not candidate.exists():
+            raise FileNotFoundError(f"consulted article not found: {slug}")
+        normalized.append(slug)
+    return normalized
+
+
+def build_manual_qa_article(
+    *,
+    title: str,
+    question: str,
+    answer: str,
+    consulted_articles: list[str],
+    timestamp: str,
+    project: str,
+) -> str:
+    """Build a manual Q&A article body for the markdown wiki."""
+    filed_date = timestamp[:10]
+    consulted = [normalize_article_slug(item) for item in consulted_articles]
+    consulted = [item for item in consulted if item]
+
+    frontmatter = [
+        "---",
+        f"title: {_frontmatter_string(title)}",
+        "type: qa",
+        f"question: {_frontmatter_string(question)}",
+        f"consulted_articles: {_frontmatter_list(consulted)}",
+        f"filed: {filed_date}",
+        f"project: {_frontmatter_string(project)}",
+        "tags: [qa, manual-file-back]",
+        "---",
+        "",
+    ]
+
+    consulted_section = (
+        "\n".join(f"- [[{slug}]]" for slug in consulted) if consulted else "_Not recorded._"
+    )
+
+    body = [
+        f"# {title}",
+        "",
+        "## Question",
+        "",
+        question.strip(),
+        "",
+        "## Answer",
+        "",
+        answer.strip(),
+        "",
+        "## Consulted Articles",
+        "",
+        consulted_section,
+        "",
+    ]
+
+    return "\n".join(frontmatter + body)
+
+
+def save_manual_qa_answer(
+    *,
+    question: str,
+    answer: str,
+    consulted_articles: list[str] | None = None,
+    title: str | None = None,
+    slug: str | None = None,
+    project: str = "memory-claude",
+) -> Path:
+    """Save a manually produced answer into wiki/qa without starting Agent SDK."""
+    clean_question = question.strip()
+    clean_answer = answer.strip()
+    if not clean_question:
+        raise ValueError("question must not be empty")
+    if not clean_answer:
+        raise ValueError("answer must not be empty")
+
+    article_title = (title or clean_question).strip()
+    article_slug = slugify(slug or article_title)
+    if not article_slug:
+        raise ValueError("could not derive a Q&A slug")
+
+    path = _qa_path_for_slug(article_slug, explicit_slug=slug is not None)
+    timestamp = now_iso()
+    consulted = normalize_and_validate_consulted_articles(consulted_articles or [])
+
+    path.write_text(
+        build_manual_qa_article(
+            title=article_title,
+            question=clean_question,
+            answer=clean_answer,
+            consulted_articles=consulted,
+            timestamp=timestamp,
+            project=project,
+        ),
+        encoding="utf-8",
+    )
+
+    from rebuild_index import rebuild_and_write_index
+
+    rebuild_and_write_index()
+
+    rel_slug = str(path.relative_to(WIKI_DIR)).replace("\\", "/").replace(".md", "")
+    log_entry = (
+        f"\n## [{timestamp}] query (manual-filed) | {article_title}\n"
+        f"- Question: {clean_question}\n"
+        f"- Consulted: "
+        f"{', '.join(f'[[{normalize_article_slug(item)}]]' for item in consulted) or 'not recorded'}\n"
+        f"- Filed to: [[{rel_slug}]]\n"
+    )
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LOG_FILE.open("a", encoding="utf-8") as fh:
+        fh.write(log_entry)
+
+    state = load_state()
+    state["manual_qa_file_count"] = state.get("manual_qa_file_count", 0) + 1
+    save_state(state)
+
+    return path
+
+
 def preview_query(question: str) -> str:
     """Build a no-cost query preview without starting Agent SDK."""
     candidates = build_query_candidates(question)
@@ -287,11 +456,48 @@ def main() -> None:
         action="store_true",
         help="Show local candidate articles and provenance guidance without starting Agent SDK",
     )
+    parser.add_argument(
+        "--save-answer-file",
+        metavar="PATH",
+        help="Save an already-written answer file to wiki/qa/ without starting Agent SDK",
+    )
+    parser.add_argument(
+        "--consulted",
+        action="append",
+        default=[],
+        help="Consulted wiki article slug for --save-answer-file; repeat as needed",
+    )
+    parser.add_argument("--title", help="Q&A article title for --save-answer-file")
+    parser.add_argument("--slug", help="Explicit Q&A article slug for --save-answer-file")
+    parser.add_argument(
+        "--project",
+        default="memory-claude",
+        help="Project frontmatter value for --save-answer-file",
+    )
     args = parser.parse_args()
+
+    if args.file_back and args.save_answer_file:
+        parser.error("--file-back and --save-answer-file are mutually exclusive")
 
     print(f"Question: {args.question}")
     print(f"File back: {'yes' if args.file_back else 'no'}")
     print("-" * 60)
+
+    if args.save_answer_file:
+        answer_path = Path(args.save_answer_file)
+        answer = answer_path.read_text(encoding="utf-8")
+        saved = save_manual_qa_answer(
+            question=args.question,
+            answer=answer,
+            consulted_articles=args.consulted,
+            title=args.title,
+            slug=args.slug,
+            project=args.project,
+        )
+        rel = saved.relative_to(ROOT_DIR)
+        print(f"Saved manual Q&A answer to {rel}")
+        print("Index rebuilt and log.md updated.")
+        return
 
     if args.preview:
         print(preview_query(args.question))

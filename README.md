@@ -415,6 +415,12 @@ uv run python scripts/wiki_cli.py query "how does auth work?"
 # Preview likely articles without spending an Agent SDK turn
 uv run python scripts/wiki_cli.py query "how does auth work?" --preview
 
+# Save an already-written manual/Codex answer as a Q&A article
+uv run python scripts/wiki_cli.py query "how does auth work?" --save-answer-file answer.md --consulted concepts/llm-wiki-architecture
+
+# Benchmark production retrieval before changing search backends
+uv run python scripts/retrieval_benchmark.py
+
 # Run health checks
 uv run python scripts/wiki_cli.py lint
 uv run python scripts/wiki_cli.py lint --full
