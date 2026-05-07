@@ -602,7 +602,7 @@ post_count = 91, delta = +7 expected: 5 parametrized cases + 2 discrete function
 ### §4.3 — Focused pytest on new tests
 ```
 ============================= test session starts ==============================
-platform linux -- Python 3.14.4, pytest-9.0.3, pluggy-1.6.0 -- /home/dmaka/.cache/llm-wiki/.venv/bin/python3
+platform linux -- Python 3.14.4, pytest-9.0.3, pluggy-1.6.0 -- ${HOME}/.cache/llm-wiki/.venv/bin/python3
 cachedir: .pytest_cache
 rootdir: <repo-root>
 configfile: pyproject.toml
@@ -628,7 +628,7 @@ tests/test_rebuild_index.py::test_list_form_frontmatter_end_to_end_stays_idempot
 [PASS] flush_quality_coverage: Last 7d: 6852408/6852408 chars reached flush.py (coverage 100.0%)
 [FAIL] flush_pipeline_correctness: Last 24h: 2 'Fatal error in message reader' events (7d total: 35, most recent 2026-04-23 21:34:32) — active Bug H regression, investigate issue #16
 [PASS] python_version: Python 3.14.4
-[PASS] uv_binary: /home/dmaka/.local/bin/uv
+[PASS] uv_binary: ${HOME}/.local/bin/uv
 [PASS] index_health: Index is up to date.
 [FAIL] structural_lint: Running knowledge base lint checks...
 [PASS] query_preview_smoke: Query preview returned provenance-aware candidates

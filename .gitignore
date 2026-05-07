@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 *.pyo
+.pytest-tmp*/
 
 # Local environment overrides
 .env
@@ -16,9 +17,6 @@ scripts/locks/
 scripts/.last-flush-spawn
 scripts/.last-tool-capture
 scripts/.last-wiki-reminder
-
-# uv
-uv.lock
 
 # Obsidian
 .obsidian/

@@ -626,7 +626,7 @@ uv run python scripts/lint.py --structural-only 2>&1 | Select-Object -Last 5
 ```text
   Skipping: Contradictions (--structural-only)
 
-Report saved to: E:\Project\memory claude\memory claude\reports\lint-2026-04-14.md
+Report saved to: ${REPO_ROOT}\reports\lint-2026-04-14.md
 
 Results: 0 errors, 0 warnings, 37 suggestions
 ```

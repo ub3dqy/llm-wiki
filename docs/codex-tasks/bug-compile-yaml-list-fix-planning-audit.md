@@ -43,7 +43,7 @@ Notes:
 
 | MCP | Probe | Raw output | Status |
 |---|---|---|---|
-| `mcp__git__git_status` | `git_status({repo_path: "E:\\Project\\memory claude\\memory claude"})` | `On branch master. Your branch is ahead of 'origin/master' by 2 commits. Changes not staged: AGENTS.md, CLAUDE.md, docs/claude-plan-creation-procedure.md. 44 untracked docs/ files.` (verbatim excerpt) | ✅ ready |
+| `mcp__git__git_status` | `git_status({repo_path: "${REPO_ROOT}"})` | `On branch master. Your branch is ahead of 'origin/master' by 2 commits. Changes not staged: AGENTS.md, CLAUDE.md, docs/claude-plan-creation-procedure.md. 44 untracked docs/ files.` (verbatim excerpt) | ✅ ready |
 | `mcp__ide__getDiagnostics` | `getDiagnostics({})` | `[]` | ✅ ready (no current VSCode diagnostics, which is expected for idle state) |
 | `WebFetch` | deferred to first actual Step 5 call | — | ⚠️ deferred: probe happens when fetching first doc. Documented here as non-probed-in-advance. |
 | `mcp__context7__*` | N/A — disconnected per session system-reminder | — | ❌ unavailable this session; WebFetch is the fallback |

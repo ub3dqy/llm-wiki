@@ -57,7 +57,7 @@ uv run python scripts/lint.py --structural-only 2>&1 | tail -10
     Found 0 issue(s)
   Skipping: Contradictions (--structural-only)
 
-Report saved to: E:\Project\memory claude\memory claude\reports\lint-2026-04-14.md
+Report saved to: ${REPO_ROOT}\reports\lint-2026-04-14.md
 
 Results: 0 errors, 1 warnings, 147 suggestions
 ```
@@ -371,7 +371,7 @@ uv run python scripts/lint.py --structural-only 2>&1 | tail -10
     Found 0 issue(s)
   Skipping: Contradictions (--structural-only)
 
-Report saved to: E:\Project\memory claude\memory claude\reports\lint-2026-04-14.md
+Report saved to: ${REPO_ROOT}\reports\lint-2026-04-14.md
 
 Results: 0 errors, 1 warnings, 79 suggestions
 ```

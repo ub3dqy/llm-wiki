@@ -38,6 +38,7 @@ from hook_utils import (  # noqa: E402
     parse_hook_stdin,
     update_debounce,
 )
+from runtime_utils import build_uv_python_cmd  # noqa: E402
 
 logging.basicConfig(
     filename=str(SCRIPTS_DIR / "flush.log"),
@@ -216,17 +217,16 @@ def main_worker() -> None:
     context_file.write_text(context, encoding="utf-8")
 
     flush_script = SCRIPTS_DIR / "flush.py"
-    cmd = [
-        "uv",
-        "run",
-        "--directory",
-        str(ROOT),
-        "python",
-        str(flush_script),
-        str(context_file),
-        session_id,
-        project_name,
-    ]
+    try:
+        cmd, env = build_uv_python_cmd(
+            flush_script,
+            [str(context_file), session_id, project_name],
+            project_dir=ROOT,
+        )
+    except FileNotFoundError as exc:
+        logging.error("[stop-worker] Failed to locate uv for flush.py: %s", exc)
+        context_file.unlink(missing_ok=True)
+        return
 
     creation_flags = 0
     if sys.platform == "win32":
@@ -247,6 +247,7 @@ def main_worker() -> None:
             cmd,
             stdout=stdout_target,
             stderr=stderr_target,
+            env=env,
             creationflags=creation_flags,
         )
         update_debounce(DEBOUNCE_FILE)

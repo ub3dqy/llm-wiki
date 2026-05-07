@@ -137,7 +137,7 @@ def format_breakdown(run_id: int, result: dict) -> str:
     total = result["total_sec"]
     lines.append(f"TOTAL (find_relevant_articles skeleton end-to-end): {total * 1000:.1f}ms")
     lines.append("")
-    lines.append("OUTER phases (top-level; sum ≈ total, plus tiny timer overhead):")
+    lines.append("OUTER phases (top-level; sum ~= total, plus tiny timer overhead):")
     outer_order = [
         ("article_discovery", "article_discovery (rglob)"),
         ("extract_keywords", "extract_keywords"),
